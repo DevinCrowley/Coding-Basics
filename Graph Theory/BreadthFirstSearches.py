@@ -1,5 +1,5 @@
+from Graph import *
 from queue import Queue
-import math
 import unittest
 
 r"""
@@ -13,44 +13,50 @@ r"""
                   |__/                           
 """
 
-class GraphNode:
-    def __init__(self, value):
-        self.value = value
-        self.parent = None
-        self.discovered = False
-        self.distance = 0
+"""
+A Node contains:
+    - A unique key
+    - An optional value
+    - A parent attribute that may be assigned to another Node
+    - A distance, i.e. the distance from some other Node
+    - A discoveryTime, i.e. when the Node was first encountered in a search
+    - A finishTime, i.e. when the Node and all Nodes accessible from it 
+        have been explored in a search.
 
-
-class Graph:
-    """
-    Graph is a collection of GraphNode objects represented by 
-    an array of vertices and an adjacency list of edges.
-    """
-
-    def __init__(self, vertexEdges):
-        """
-        vertexEdges is an ordered list of sets 
-        of the form vertexEdges[vertexIndex] = {adjacentVertexIndices}.
-        The length of vertexEdges is the number of vertices.
-        """
-
-        self.vertices = []
-        self.adjacencyList = vertexEdges
-        # Populate vertices
-        for vertexIndex in range(len(vertexEdges)):
-            self.vertices.append(GraphNode(vertexIndex))
-
+A Graph contains:
+    - An adjacencyMap of the form 
+        {key : {(adjacentKey1, edge weight), (adjacentKey2, edge weight)}}
+    - A valueMap of the form {key : value}
+    - A vertexMap of the form {key, Node}
+"""
 
 class ListQueue:
-    """Simple queue object that stores elements in an accessible list."""
+    """
+    Simple queue object that stores elements in an accessible list.
+    Used instead of a regular queue.Queue object because it allows 
+    us to check for membership in the queue.
+
+    This is used in the bi_directional_BFS_queue_version function. 
+    The bi_directional_BFS_shell_version function works around the 
+    issue solved by this ListQueue object, but is less straightforward.
+    """
+
     def __init__(self):
         self.elements = []
+
+
     def __len__(self):
         return len(self.elements)
+
+
     def put(self, newItem):
         self.elements.insert(0, newItem)
+
+
     def get(self):
         return self.elements.pop()
+
+
     def empty(self):
         return len(self.elements) == 0
 
@@ -65,17 +71,9 @@ r"""
                                                                                
 """
 
-def reset_graph(graph):
-    # Set all vertices in graph to default unexplored state
-    for vertex in graph.vertices:
-        vertex.parent = None
-        vertex.discovered = False
-        vertex.distance = math.inf
-
-
 def discover_vertex(parent, child):
     """Set child to discovered, set child's parent to parent, set child's distance to parent's + 1."""
-    child.discovered = True
+    child.searchStatus = "discovered"
     child.parent = parent
     child.distance = parent.distance + 1
 
@@ -86,11 +84,11 @@ def explore_adjacent_vertices(graph, queue, targetIndices = []):
     adding yet undiscovered ones to the queue.
     """
     currentNodeIndex = queue.get()
-    currentNode = graph.vertices[currentNodeIndex]
-    for adjacentNodeIndex in graph.adjacencyList[currentNodeIndex]:
-        adjacentNode = graph.vertices[adjacentNodeIndex]
+    currentNode = graph.vertexMap[currentNodeIndex]
+    for adjacentNodeIndex in graph.adjacentKeys(currentNodeIndex):
+        adjacentNode = graph.vertexMap[adjacentNodeIndex]
 
-        if not adjacentNode.discovered:
+        if adjacentNode.searchStatus != "discovered":
             discover_vertex(currentNode, adjacentNode)
             queue.put(adjacentNodeIndex)
         
@@ -107,15 +105,15 @@ def explore_adjacent_vertices(graph, queue, targetIndices = []):
 
 def reverse_path(graph, predecessorIndex, successorIndex):
     """
-    Reverse the GraphNode.parent pointers along the path 
+    Reverse the Node.parent attributes along the path 
     from predecessorIndex to successorIndex.
-    Sets graph.vertices[successorIndex].parent to None.
+    Sets graph.vertexMap[successorIndex].parent to None.
     """
 
-    finalNode = graph.vertices[predecessorIndex]
+    finalNode = graph.vertexMap[predecessorIndex]
 
     # Check path from successor to predecessor
-    tracerNode = graph.vertices[successorIndex]
+    tracerNode = graph.vertexMap[successorIndex]
     # Check for cycles
     pathNodes = [tracerNode]
     while tracerNode is not None and tracerNode != finalNode:
@@ -124,13 +122,14 @@ def reverse_path(graph, predecessorIndex, successorIndex):
             pathNodes.append(tracerNode)
         else: 
             raise Exception("Cycle detected.")
+    # If tracerNode is None:
     if tracerNode != finalNode:
         raise LookupError(f"No established path from {predecessorIndex} to {successorIndex}.")
-    # No longer needed
+    # No longer needed.
     del pathNodes, tracerNode
 
     # Create 3 adjacent vertices starting at successorIndex
-    previousNode = graph.vertices[successorIndex]
+    previousNode = graph.vertexMap[successorIndex]
     currentNode = previousNode.parent
     # If currentNode is None, nextNode is also None.
     nextNode = currentNode and currentNode.parent
@@ -153,8 +152,8 @@ def correct_distances_along_path(graph, predecessorIndex, successorIndex):
     from predecessor to successor.
     """
 
-    finalNode = graph.vertices[predecessorIndex]
-    tracerNode = graph.vertices[successorIndex]
+    finalNode = graph.vertexMap[predecessorIndex]
+    tracerNode = graph.vertexMap[successorIndex]
 
     # Verify path before making modifications,
     # check for cycles, and count the length of the path.
@@ -167,12 +166,13 @@ def correct_distances_along_path(graph, predecessorIndex, successorIndex):
             pathNodes.append(tracerNode)
         else: 
             raise Exception("Cycle detected.")
+    # If tracerNode is None:
     if tracerNode != finalNode:
         raise LookupError(f"No established path from {successorIndex} to {predecessorIndex}.""")
 
     # A well-defined path exists between successor and predecessor through their parent attributes.
 
-    tracerNode = graph.vertices[successorIndex]
+    tracerNode = graph.vertexMap[successorIndex]
     while tracerNode != finalNode:
         tracerNode.distance = edgesAway
         tracerNode = tracerNode.parent
@@ -193,54 +193,18 @@ def update_shell(graph, shellIndices, targetShell):
     discovererIndex = None
     newShellIndices = []
     for shellIndex in shellIndices:
-        for adjacentIndex in graph.adjacencyList[shellIndex]:
-            adjacentNode = graph.vertices[adjacentIndex]
+        for adjacentIndex in graph.adjacentKeys(shellIndex):
+            adjacentNode = graph.vertexMap[adjacentIndex]
 
             # Check for collision
             if adjacentIndex in targetShell:
                 collisionIndex = adjacentIndex
                 discovererIndex = shellIndex
 
-            if not adjacentNode.discovered:
-                discover_vertex(graph.vertices[shellIndex], adjacentNode)
+            if adjacentNode.searchStatus != "discovered":
+                discover_vertex(graph.vertexMap[shellIndex], adjacentNode)
                 newShellIndices.append(adjacentIndex)
     return newShellIndices, collisionIndex, discovererIndex
-
-
-def make_undirected(graph):
-    """
-    For each edge A --> B, ensure that the opposite edge B --> A is present.
-    Runtime is O(|vertices| + |edges|).
-    """
-
-    # Alias graph.adjacencyList for convenience
-    adjacencyList = graph.adjacencyList
-
-    for vertexIndex in range(len(adjacencyList)):
-        for adjacentNodeIndex in adjacencyList[vertexIndex]:
-        # Since the elements of adjacencyList are sets, we need not check for membership.
-            adjacencyList[adjacentNodeIndex].add(vertexIndex)
-
-
-def construct_adjacent_to_list(graph):
-    """
-    Constructs and returns an "inverse" adjacencyList: 
-    a list with an element for each vertex whose elements are 
-    lists of the indices for all vertices that that vertex is adjacent to.
-    That is, adjacentToList[vertexIndex] = [indices of vertices with an edge to that vertex]
-    
-    Worst case runtime is roughly O(|vertices|^2 * log|vertices|). Dreadful. Avoid use.
-    (Not used.)
-    """
-
-    adjacentToList = []
-    for vertexIndex in range(len(graph.vertices)):
-        adjacentToList.append([])
-        for adjacentToIndex in range(len(graph.vertices)):
-            # If adjacentToIndex is adjacent to vertexIndex
-            if vertexIndex in graph.adjacencyList[adjacentToIndex]:
-                adjacentToList[vertexIndex].append(adjacentToIndex)
-    return adjacentToList
 
 r"""
   ____                              _   _     _                ______   _                _               _____                                _                  
@@ -261,11 +225,11 @@ def BFS(graph, rootIndex, terminationIndex = None):
     is returned.
     """
 
-    reset_graph(graph)
+    graph.reset()
 
     # Discover the rootNode
-    rootNode = graph.vertices[rootIndex]
-    rootNode.discovered = True
+    rootNode = graph.vertexMap[rootIndex]
+    rootNode.searchStatus = "discovered"
     rootNode.distance = 0
 
     # searchQueue is a Queue of the vertexIndex values representing vertices to be explored
@@ -276,7 +240,7 @@ def BFS(graph, rootIndex, terminationIndex = None):
     while not searchQueue.empty():
         # if terminationIndex was found, a path has been made to it from rootIndex.
         if explore_adjacent_vertices(graph, searchQueue, [terminationIndex])[0]:
-            return graph.vertices[terminationIndex].distance
+            return graph.vertexMap[terminationIndex].distance
 
     # Explored all accessible vertices.
     return None
@@ -294,16 +258,16 @@ def bi_directional_BFS_queue_version(graph, sourceIndex, destinationIndex):
     the first discovered shortest path can be assumed correct.
     """
 
-    reset_graph(graph)
+    graph.reset()
 
-    sourceNode = graph.vertices[sourceIndex]
-    sourceNode.discovered = True
+    sourceNode = graph.vertexMap[sourceIndex]
+    sourceNode.discovered = "discovered"
     sourceNode.distance = 0
     sourceQueue = ListQueue()
     sourceQueue.put(sourceIndex)
     
-    destinationNode = graph.vertices[destinationIndex]
-    destinationNode.discovered = True
+    destinationNode = graph.vertexMap[destinationIndex]
+    destinationNode.discovered = "discovered"
     destinationNode.distance = 0
     destinationQueue = ListQueue()
     destinationQueue.put(destinationIndex)
@@ -321,9 +285,9 @@ def bi_directional_BFS_queue_version(graph, sourceIndex, destinationIndex):
             # discovererIndex is connected to source.
             reverse_path(graph, destinationIndex, collisionIndex)
             # The vertex at collisionIndex's parent is None, but should be discovererIndex in source.
-            graph.vertices[collisionIndex].parent = graph.vertices[discovererIndex]
+            graph.vertexMap[collisionIndex].parent = graph.vertexMap[discovererIndex]
             correct_distances_along_path(graph, sourceIndex, destinationIndex)
-            return graph.vertices[destinationIndex].distance
+            return graph.vertexMap[destinationIndex].distance
 
         collisionFound, collisionIndex, discovererIndex = explore_adjacent_vertices(graph, 
                                                         destinationQueue, 
@@ -334,9 +298,9 @@ def bi_directional_BFS_queue_version(graph, sourceIndex, destinationIndex):
             # collisionIndex is connected to source.
             reverse_path(graph, destinationIndex, discovererIndex)
             # The vertex at discovererIndex's parent is None, but should be the collisionIndex in source.
-            graph.vertices[discovererIndex].parent = graph.vertices[collisionIndex]
+            graph.vertexMap[discovererIndex].parent = graph.vertexMap[collisionIndex]
             correct_distances_along_path(graph, sourceIndex, destinationIndex)
-            return graph.vertices[destinationIndex].distance
+            return graph.vertexMap[destinationIndex].distance
     # The trees rooted at source and destination cannot be connected.
     return None
 
@@ -353,15 +317,15 @@ def bi_directional_BFS_shell_version(graph, sourceIndex, destinationIndex):
     the first discovered shortest path can be assumed correct.
     """
 
-    reset_graph(graph)
+    graph.reset()
 
-    sourceNode = graph.vertices[sourceIndex]
-    sourceNode.discovered = True
+    sourceNode = graph.vertexMap[sourceIndex]
+    sourceNode.searchStatus = "discovered"
     sourceNode.distance = 0
     sourceShellIndices = [sourceIndex]
 
-    destinationNode = graph.vertices[destinationIndex]
-    destinationNode.discovered = True
+    destinationNode = graph.vertexMap[destinationIndex]
+    destinationNode.searchStatus = "discovered"
     destinationNode.distance = 0
     destinationShellIndices = [destinationIndex]
 
@@ -380,9 +344,9 @@ def bi_directional_BFS_shell_version(graph, sourceIndex, destinationIndex):
             reverse_path(graph, destinationIndex, collisionIndex)
             # The vertex at collisionIndex's parent is None, 
             # but should be discovererIndex in the source shell.
-            graph.vertices[collisionIndex].parent = graph.vertices[discovererIndex]
+            graph.vertexMap[collisionIndex].parent = graph.vertexMap[discovererIndex]
             correct_distances_along_path(graph, sourceIndex, destinationIndex)
-            return graph.vertices[destinationIndex].distance
+            return graph.vertexMap[destinationIndex].distance
 
         destinationShellIndices, collisionIndex, discovererIndex = update_shell(graph, 
                                                                     destinationShellIndices, 
@@ -394,60 +358,12 @@ def bi_directional_BFS_shell_version(graph, sourceIndex, destinationIndex):
             reverse_path(graph, destinationIndex, discovererIndex)
             # The vertex at discovererIndex's parent is None, 
             # but should be the collisionIndex in the source shell.
-            graph.vertices[discovererIndex].parent = graph.vertices[collisionIndex]
+            graph.vertexMap[discovererIndex].parent = graph.vertexMap[collisionIndex]
             correct_distances_along_path(graph, sourceIndex, destinationIndex)
-            return graph.vertices[destinationIndex].distance
+            return graph.vertexMap[destinationIndex].distance
     
     # The trees rooted at source and destination cannot be connected.
     return None
-
-r"""
-   _____                          _         _____    _                 _                       
-  / ____|                        | |       |  __ \  (_)               | |                      
- | |  __   _ __    __ _   _ __   | |__     | |  | |  _   ___   _ __   | |   __ _   _   _   ___ 
- | | |_ | | '__|  / _` | | '_ \  | '_ \    | |  | | | | / __| | '_ \  | |  / _` | | | | | / __|
- | |__| | | |    | (_| | | |_) | | | | |   | |__| | | | \__ \ | |_) | | | | (_| | | |_| | \__ \
-  \_____| |_|     \__,_| | .__/  |_| |_|   |_____/  |_| |___/ | .__/  |_|  \__,_|  \__, | |___/
-                         | |                                  | |                   __/ |      
-                         |_|                                  |_|                  |___/       
-"""
-
-def print_path(rootNode, targetNode):
-    """Prints each successive parent of targetNode until rootNode or None is encountered."""
-
-    if targetNode == rootNode:
-        print(targetNode.value);
-    elif targetNode.parent == None:
-        print("No path from rootNode to targetNode.")
-    else:
-        print_path(rootNode, targetNode.parent)
-        print(targetNode.value)
-
-
-def print_edges(graph):
-    """For each vertex, print_edges prints each outgoing edge on its own line."""
-
-    for vertexIndex in range(len(graph.adjacencyList)):
-        print()
-        for adjacentIndex in graph.adjacencyList[vertexIndex]:
-            print(f"vertexIndex: {vertexIndex}, adjacentIndex: {adjacentIndex}")
-
-
-def print_path_to_root(graph, vertexIndex):
-    """
-    Follows the parent pointer of vertexIndex and its ancestors and prints each value 
-    until a cycle is detected or None is encountered.
-    """
-
-    tracerNode = graph.vertices[vertexIndex]
-    pathNodes = [tracerNode]
-    while tracerNode != None:
-        print(tracerNode.value)
-        tracerNode = tracerNode.parent
-        if tracerNode not in pathNodes:
-            pathNodes.append(tracerNode)
-        else:
-            raise Exception("Cycle detected.")
 
 r"""
   _    _           _   _       _______                _         
@@ -465,26 +381,7 @@ class Test_Breadth_First_Searches(unittest.TestCase):
 
     def setUp(self):
 
-        # Create graph. 
-        # To understand it, I recommend drawing the first half based on the initialization of vertexEdges.
-        # Note that the print_edges(graph) function above will show you each vertex's outgoing edges.
-        # This can make constructing the graph quite straightforward.
-
-        shellDepth = 3
-        # numVertices = 1 + 3 + 3*2 + (3*2*2) + 3*2 + 3 + 1
-        numCenterLine = 3 * 2**(shellDepth - 1)
-        numVertices = (1 + sum([3 * 2**i for i in range(shellDepth - 1)])) * 2 + numCenterLine
-
-        vertexEdges = [{2 * i + 1, 2 * i + 2, 2 * i + 3} for i in range(int((numVertices - numCenterLine) / 2))]
-        vertexEdges += [set() for _ in range(numCenterLine)]
-        vertexTaperingEdges = []
-        for i in range(numVertices - 1, int((numVertices + numCenterLine) / 2) - 1, -1):
-            lowerEdges = numVertices - 1 - 2 * (numVertices - 1 - i)
-            vertexTaperingEdges.append({lowerEdges - 1, lowerEdges - 2, lowerEdges - 3})
-        vertexEdges += vertexTaperingEdges[::-1]
-
-        self.graph = Graph(vertexEdges)
-        make_undirected(self.graph)
+        self.graph = sample_undirected_graph(3)
 
 
     def test_BFS(self):
@@ -497,16 +394,16 @@ class Test_Breadth_First_Searches(unittest.TestCase):
         self.assertEqual(BFS(self.graph, 24, 24), 0)
 
         BFS(self.graph, 0)
-        self.assertEqual(self.graph.vertices[31].distance, 6)
-        self.assertEqual(self.graph.vertices[28].distance, 5)
-        self.assertEqual(self.graph.vertices[27].distance, 4)
-        self.assertEqual(self.graph.vertices[14].distance, 3)
-        self.assertEqual(self.graph.vertices[9].distance, 2)
-        self.assertEqual(self.graph.vertices[2].distance, 1)
-        self.assertEqual(self.graph.vertices[0].distance, 0)
+        self.assertEqual(self.graph.vertexMap[31].distance, 6)
+        self.assertEqual(self.graph.vertexMap[28].distance, 5)
+        self.assertEqual(self.graph.vertexMap[27].distance, 4)
+        self.assertEqual(self.graph.vertexMap[14].distance, 3)
+        self.assertEqual(self.graph.vertexMap[9].distance, 2)
+        self.assertEqual(self.graph.vertexMap[2].distance, 1)
+        self.assertEqual(self.graph.vertexMap[0].distance, 0)
 
         BFS(self.graph, 2)
-        self.assertEqual(self.graph.vertices[26].distance, 5)
+        self.assertEqual(self.graph.vertexMap[26].distance, 5)
 
 
     def test_bi_directional_BFS_queue_version(self):
