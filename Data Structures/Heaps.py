@@ -64,9 +64,143 @@ class N_ary_heap:
         # Set attributes.
 
         self._heap_type = heap_type
+        self._overflow_off = overflow_off
         self._heap_array = np.full(capacity, np.nan, dtype)
         self._n_ary = n_ary
         self._size = 0
+
+
+    def __str__(self):
+        """Return the string representation of all elements held in the underlying self._heap_array."""
+        
+        return str(self._heap_array[:self.size()])
+
+
+    @staticmethod
+    def _array_to_tree_string(array, n_ary=2, size=None, dtype=None):
+        """
+        Return a string representing the implicit underlying tree structure of an n_ary heap interpretation of array.
+        
+        Args:
+            array (np.ndarray): The array to be interpreted as a heap.
+            n_ary (int, optional): The number of child nodes belonging to each fully internal node. Defaults to 2.
+            size (int, optional): The size of the implicit heap in array. If None, assumed to equal array.size. Defaults to None.
+            dtype (type, NoneType, optional): The dtype to case array to. Defaults to None.
+        
+        Raises:
+            TypeError: Raised if n_ary is not of type int.
+            ValueError: Raised if n_ary is not positive.
+            TypeError: Raised if size is not of type int.
+            ValueError: Raised if size is not positive.
+            ValueError: Raised if size exceeds array.size.
+            TypeError: Raised if dtype is neither None nor a type.
+        
+        Returns:
+            str: A single tree repersenting the implicit heap interpreted from array. Each level is separated by a newline character.
+        """
+
+        # Validate inputs.
+
+        # Validate n_ary.
+        if not isinstance(n_ary, int):
+            raise TypeError(f"n_ary must be of type int.\n"
+                            f"type(n_ary): {type(n_ary)}.")
+        if n_ary < 1:
+            raise ValueError(f"n_ary must be at least 1.\n"
+                            f"n_ary: {n_ary}.")
+
+        # Validate size.
+        if size is None:
+            size = array.size
+        if not isinstance(size, int):
+            raise TypeError(f"size must be of type int.\n"
+                            f"type(size): {type(size)}.")
+        if size < 1:
+            raise ValueError(f"size must be positive.\n"
+                            f"size: {size}.")
+        if size > array.size:
+            raise ValueError(f"size must not exceed array.size.\n"
+                            f"size: {size}, array.size: {array.size}.")
+
+        # Validate dtype.
+        if dtype is not None:
+            if not isinstance(dtype, type):
+                raise TypeError(f"dtype must be either None or a type.\n"
+                                f"type(dtype): {type(dtype)}.")
+        
+        # Validate array.
+        array = np.array(array, dtype=dtype)
+        
+        # Construct tree string.
+
+        # Gather levels in a list of lists.
+        levels = []
+        level = 0
+        level_index = 0
+        while level_index < size:
+            level_size = n_ary ** level
+            level_slice = array[level_index: min(level_index + level_size, size)].astype(str)
+            levels.append(level_slice)
+            level += 1
+            level_index += level_size
+        
+        # Find the largest item.
+        node_size = max(map(lambda value: len(str(value)), array)) + 1
+        node_size += node_size % 2
+
+        # Convert each level to an appropriately spaced string.
+        for reverse_level_index, level in enumerate(reversed(levels)):
+
+            level_index = len(levels) - 1 - reverse_level_index
+
+            # Left-pad each element with spaces to node_size.
+            for element_index, element in enumerate(level):
+                level[element_index] = ' ' * (node_size - len(str(element))) + element
+
+            # Calculatte left_pad_size.
+            # Pad by the next lower level's left pad plus half its brood size plus half of node_size.
+            left_pad_size = 0 if reverse_level_index == 0 else int(
+                left_pad_size + 
+                spacing * (n_ary - 1) / 2 + 
+                node_size * (n_ary - 1) / 2
+            )
+
+            # Join level together with appropriate spacing into a single string.
+            spacing = 0 if reverse_level_index == 0 else int(
+                node_size * (n_ary - 1) + 
+                spacing * n_ary
+            )
+            levels[level_index] = (' ' * spacing).join(level)
+
+            # Left-pad level to line up properly.
+            levels[level_index] = ' ' * left_pad_size + levels[level_index]
+
+        tree = '\n'.join(levels)
+        return tree
+
+
+    def __repr__(self):
+        """Return a string representing the implicit underlying tree structure."""
+
+        return self._array_to_tree_string(self._heap_array, self._n_ary, self.size())
+
+
+    def _n_complete_levels(self):
+        """Return the number of complete levels in the heap structure."""
+
+        n_complete_levels = int(np.log(self._size * (self._n_ary - 1) + 1) / np.log(self._n_ary))
+
+        return n_complete_levels
+
+    
+    def _n_complete_nodes(self):
+        """Return the number of nodes in the heap structure within complete levels."""
+
+        n_complete_levels = self._n_complete_levels()
+
+        n_complete_nodes = int((self._n_ary ** n_complete_levels - 1) / (self._n_ary - 1))
+
+        return n_complete_nodes
 
 
     def _is_more_extreme(self, challenger, incumbent):
@@ -100,7 +234,7 @@ class N_ary_heap:
         
         If this is a leaf node, return None."""
 
-        left_child_index = self.get_child(this_index)
+        left_child_index = self._get_child(this_index)
         if left_child_index >= self._size:
             # The node at this_index is a leaf node.
             return None
@@ -142,7 +276,7 @@ class N_ary_heap:
         while True:
             
             this_value = self._heap_array[this_index]
-            parent_index = get_parent(this_index)
+            parent_index = self._get_parent(this_index)
             parent_value = self._heap_array[parent_index]
             # Note: the parent of the root is calculated as the root.
             # Having the same value as its 'parent', the heap property will be satisfied when this_index indicates the root (index 0).
@@ -163,7 +297,7 @@ class N_ary_heap:
         """Recursively exchange the value at this_index with its predecessors in the tree until it satisfies the appropriate heap property."""
         
         this_value = self._heap_array[this_index]
-        parent_index = get_parent(this_index)
+        parent_index = self._get_parent(this_index)
         parent_value = self._heap_array[parent_index]
 
         exchange_and_recurse = False
@@ -267,16 +401,16 @@ class N_ary_heap:
             raise ValueError(f"overflow_off must be either 'head' or 'tail'.\n"
                                  f"overflow_off: {overflow_off}.")
 
-'''
-  _    _                         __  __          _     _                   _       
- | |  | |                       |  \/  |        | |   | |                 | |      
- | |  | |  ___    ___   _ __    | \  / |   ___  | |_  | |__     ___     __| |  ___ 
- | |  | | / __|  / _ \ | '__|   | |\/| |  / _ \ | __| | '_ \   / _ \   / _` | / __|
- | |__| | \__ \ |  __/ | |      | |  | | |  __/ | |_  | | | | | (_) | | (_| | \__ \
-  \____/  |___/  \___| |_|      |_|  |_|  \___|  \__| |_| |_|  \___/   \__,_| |___/
-                                                                                   
-                                                                                   
-'''
+    '''
+      _    _                         __  __          _     _                   _       
+     | |  | |                       |  \/  |        | |   | |                 | |      
+     | |  | |  ___    ___   _ __    | \  / |   ___  | |_  | |__     ___     __| |  ___ 
+     | |  | | / __|  / _ \ | '__|   | |\/| |  / _ \ | __| | '_ \   / _ \   / _` | / __|
+     | |__| | \__ \ |  __/ | |      | |  | | |  __/ | |_  | | | | | (_) | | (_| | \__ \
+      \____/  |___/  \___| |_|      |_|  |_|  \___|  \__| |_| |_|  \___/   \__,_| |___/
+
+
+    '''
 
     def heapsort(self, min_or_max_first=None):
         """
@@ -473,20 +607,20 @@ class N_ary_heap:
         Inserts new_value into the heap and restores the heap property. 
         
         If the heap is already at capacity, then new_value is compared to either the head (root) or tail 
-        depending on self.overflow_off, and if new_value is less extreme in the direction of the head or tail, 
+        depending on self._overflow_off, and if new_value is less extreme in the direction of the head or tail, 
         then that value is removed and new_value is inserted.
         
         Args:
             new_value (dtype): The value to be inserted
         
         Raises:
-            ValueError: Raised if self.overflow_off is encountered as something other than 'head' or 'tail'.
+            ValueError: Raised if self._overflow_off is encountered as something other than 'head' or 'tail'.
         
         Returns:
             dtype, NoneType: If the heap overflowed then the discarded value is returned, else None is returned.
         """
 
-        if self._size < self._capacity:
+        if self._size < len(self._heap_array):
             # Add new_value to the first available space in the array, sift up, and increment size.
             self._heap_array[self._size] = new_value
             self._size += 1
@@ -494,14 +628,14 @@ class N_ary_heap:
             return None
         else:
             # Already at capacity. Discard and return a value.
-            if self.overflow_off == 'head':
+            if self._overflow_off == 'head':
                 # If the root is not more extreme than new_value, do not insert new_value.
                 if not self._is_more_extreme(self._heap_array[0], new_value):
                     return new_value
                 else:
                     # Pop and return the root, replacing it with new_value and restoring the heap property.
                     return self.replace(new_value)
-            elif self.overflow_off == 'tail':
+            elif self._overflow_off == 'tail':
                 # Perform heapsort in place with self._heap_type first, 
                 # then replace the last item if it is less extreme than new_value.
                 tail = self.peek_tail() # Note: sorts self._heap_array.
@@ -517,8 +651,8 @@ class N_ary_heap:
                 raise ValueError(f"overflow_off must be either 'head' or 'tail'.\n"
                                  f"overflow_off: {overflow_off}.")
 
-    @ staticmethod
-    def heapify(array, capacity=None, heap_type='min', overflow_off='head', dtype=float, n_ary=2):
+    @classmethod
+    def heapify(cls, array, capacity=None, heap_type='min', overflow_off='head', dtype=float, n_ary=2):
         """
         Construct a heap from array. Its capacity is set to the size of the array.
         
@@ -553,13 +687,14 @@ class N_ary_heap:
         heap._size = array.size
 
         # Heapify the underlying array.
-        n_internal_nodes = heap._n_ary**(np.floor(
-            np.log(heap._size) / np.log(heap._n_ary))
-        ) - 1
-        for index in reversed(range(n_internal_nodes)):
+        n_complete_levels = heap._n_complete_levels()
+        n_incomplete_nodes = heap.size() - heap._n_complete_nodes()
+        largest_complete_level_size = heap._n_ary ** (n_complete_levels - 1)
+        n_parent_nodes = int(heap.size() - n_incomplete_nodes - largest_complete_level_size + np.ceil([n_incomplete_nodes / heap._n_ary]).item(0))
+        for index in reversed(range(n_parent_nodes)):
             heap._sift_down(index)
 
-        self.change_capacity(new_capacity)
+        heap.change_capacity(capacity)
 
         return heap
 
@@ -586,12 +721,11 @@ class N_ary_heap:
             raise ValueError(f"new_capacity must be positive.\n"
                             f"new_capacity: {new_capacity}.")
         
-        if new_capacity >= self._capacity:
-            self._heap_array = np.concatenate((self._heap_array, np.full(new_capacity, np.nan, self.dtype)))
+        if new_capacity >= len(self._heap_array):
+            self._heap_array = np.concatenate((self._heap_array, np.full(new_capacity, np.nan, self._heap_array.dtype)))
         else:
             self._force_overflow(self.size() - new_capacity)
             self._heap_array = self._heap_array[:self.size()]
-        self._capacity = new_capacity
 
 '''
   _        _         _              ____                             _      _____           _              _                     
@@ -609,7 +743,6 @@ class Infinite_N_ary_heap(N_ary_heap):
     def __init__(self, heap_type='min', overflow_off='head', dtype=float, n_ary=2):
 
         super().__init__(1, heap_type, overflow_off, dtype, n_ary)
-        self._capacity = np.inf
         self._heap_array = []
         self._heap_list = self._heap_array # Aliasing for clarity.
 
@@ -682,3 +815,28 @@ class Infinite_N_ary_heap(N_ary_heap):
         """
 
         raise NotImplementedError(f"change_capacity is not implemented in Infinite_N_ary_heap.")
+
+
+    @classmethod
+    def heapify(cls, array, heap_type='min', overflow_off='head', dtype=float, n_ary=2):
+        """
+        Construct a heap from array.
+        
+        Args:
+            array (np.ndarray): The array to be made into a heap.
+            capacity (int, NoneType, optional): The capacity of the new array. None is interpreted as the size of array. Defaults to None.
+            heap_type (str, optional): The type of heap to be made, either 'min' or 'max'. Defaults to 'min'.
+            overflow_off (str, optional): Determines what to discard when values are pushed when the heap is at capacity, either 'head' or 'tail'. Defaults to 'head'.
+            dtype (type, optional): The dtype of the heap. Defaults to float.
+            n_ary (int, optional): The maximum number of children for each node, or the branching factor of the tree. Defaults to 2.
+
+        Returns:
+            N_ary_heap: The heap constructed from array.
+        """
+
+        heap = super().heapify(array, array.size, heap_type, overflow_off, dtype, n_ary)
+
+        heap._heap_array = list(heap._heap_array)
+        heap._heap_list = heap._heap_array # Aliasing for clarity.
+
+        return heap
