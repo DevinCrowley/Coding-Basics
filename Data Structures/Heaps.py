@@ -8,7 +8,7 @@ class N_ary_heap:
         Create an empty heap.
         
         Args:
-            capacity (int, NoneType, optional): The capacity of the new array. None is interpreted as the size of array. Defaults to None.
+            capacity (int): The capacity of the underlying array.
             heap_type (str, optional): The type of heap to be made, either 'min' or 'max'. Defaults to 'min'.
             overflow_off (str, optional): Determines what to discard when values are pushed when the heap is at capacity, either 'head' or 'tail'. Defaults to 'head'.
             dtype (type, optional): The dtype of the heap. Defaults to float.
@@ -741,6 +741,23 @@ class N_ary_heap:
 class Infinite_N_ary_heap(N_ary_heap):
 
     def __init__(self, heap_type='min', overflow_off='head', dtype=float, n_ary=2):
+        """
+        Create an empty heap.
+        
+        Args:
+            heap_type (str, optional): The type of heap to be made, either 'min' or 'max'. Defaults to 'min'.
+            overflow_off (str, optional): Determines what to discard when values are pushed when the heap is at capacity, either 'head' or 'tail'. Defaults to 'head'.
+            dtype (type, optional): The dtype of the heap. Defaults to float.
+            n_ary (int, optional): The maximum number of children for each node, or the branching factor of the tree. Defaults to 2.
+            
+        Raises:
+            ValueError: Raised if heap_type is not 'min' or 'max'.
+            TypeError: Raised if overflow_off is not of type str.
+            ValueError: Raised if overflow_off is not 'head' or 'tail'.
+            TypeError: Raised if dtype is not a type.
+            TypeError: Raised if n_ary is not of type int.
+            ValueError: Raised if n_ary is not positive.
+        """
 
         super().__init__(1, heap_type, overflow_off, dtype, n_ary)
         self._heap_array = []
