@@ -1,5 +1,7 @@
 import numpy as np
 
+from Heaps import N_ary_heap
+
 
 class _Balltree_node:
 
@@ -35,20 +37,40 @@ class _Balltree_node:
 
 
 class Balltree:
+    """A binary tree of _Balltree_node objects to support the k_nearest_neighbors_search method."""
 
     def __init__(self, array, spread_of=5, median_of=5):
+        """
+        Recursively constructs a binary tree of _Balltree_node objects whose root node is stored as self.root by making the first call to generate_Balltree.
+        
+        Args:
+            array (np.ndarray): The array to be made into a balltree. Assumed to be of shape (number of points, number of dimensions for each point).
+            spread_of (int, optional): The maximum number of points to check to estimate the spread of a subset of points along a particular dimension. Defaults to 5.
+            median_of (int, optional): The maximum number of points to check to estimate the median of a subset of points along a particular dimension. Defaults to 5.
+        """
 
         self.root = self.generate_Balltree(array, spread_of, median_of)
 
 
     @staticmethod
     def generate_Balltree(array, spread_of=5, median_of=5):
+        """
+        Recursively constructs a Balltree of _Balltree_node objects generated from array and returns the root.
+        
+        Args:
+            array (np.ndarray): The array to be made into a balltree. Assumed to be of shape (number of points, number of dimensions for each point).
+            spread_of (int, optional): The maximum number of points to check to estimate the spread of a subset of points along a particular dimension. Defaults to 5.
+            median_of (int, optional): The maximum number of points to check to estimate the median of a subset of points along a particular dimension. Defaults to 5.
+        
+        Returns:
+            _Balltree_node: The root of the constructed balltree.
+        """
 
         # Determine pivot, or split point.
 
         pivot_dimension = Balltree._find_widest_dimension_approx(array, spread_of=spread_of)
         pivot_value = Balltree._find_median_approx(array, pivot_dimension, median_of=median_of)
-        pivot_column = array[array[:, pivot_dimension]]
+        pivot_column = array[:, pivot_dimension]
 
         # Make this_node.
 
@@ -66,13 +88,13 @@ class Balltree:
                 break
         left_array = np.append(left_array[:index], left_array[index + 1:], axis=0) # Side effect: breaks alias, makes copy.
 
-        # Recursively make and attack children, terminating each child if it has size 0.
+        # Recursively make and attach children, terminating each child if it has size 0.
 
-        if left_child.size > 0:
+        if left_array.size > 0:
             left_child = Balltree.generate_Balltree(left_array, spread_of, median_of)
             this_node.attach_left_child(left_child)
 
-        if right_child.size > 0:
+        if right_array.size > 0:
             right_child = Balltree.generate_Balltree(right_array, spread_of, median_of)
             this_node.attach_right_child(right_child)
 
@@ -126,6 +148,96 @@ class Balltree:
         return np.median(array[point_indices, dimension])
 
 
-    def k_nearest_neighbors(self, k):
+    @staticmethod
+    def _distance(point_x, point_y):
+        """Return the quadratic sum of the two coordinates point_x and point_y."""
 
-        raise NotImplementedError("Do it.")
+        return np.sqrt(np.sum((point_y - point_x)**2))
+
+
+    def k_nearest_neighbors_search(self, target, k):
+        """
+        Create and return a max-first priority queue with capacity k to store all encountered nearest neighbors to target.
+
+        Recursively follows the tree starting at self.root by making the first call to _k_nearest_neighbors_recursive. 
+        
+        The tree is searched selectively, terminating recursion at nodes whose subtree cannot contain nearer neighbors 
+        than have already been encountered.
+        
+        Args:
+            target (np.ndarray, seq): The coordinates of the point whose nearest neighbors are returned.
+            k (int): The number of nearest-neighbors to search for.
+        
+        Raises:
+            TypeError: Raised if target has values of types other than float or int.
+            ValueError: Raised if target is not 1-dimensional.
+            ValueError: raised if target does not have the same length as the coordinates stored in self.root.
+            TypeError: Raised if k is not of type int.
+            ValueError: Raised if k is not positive.
+        
+        Returns:
+            N_ary_heap: The heap used as a max-first priority queue holding the (up to) k nearest neighbors to target in self.
+        """
+
+        # Validate inputs.
+        target = np.array(target)
+        if target.dtype not in [float, int]:
+            raise TypeError(f"target must have values of type int or float.\n"
+                            f"target.dtype: {target.dtype}.")
+        if target.ndim != 1:
+            raise ValueError(f"target must be 1-dimensional.\n"
+                             f"target.ndim: {target.ndim}.")
+        if len(target) != len(self.root.coordinates):
+            raise ValueError(f"target must have the same length as the coordinates in self, the Balltree.\n"
+                             f"len(target): {len(taraget)}, len(self.root.coordinates): {len(self.root.coordinates)}.")
+        if not isinstance(k, int):
+            raise TypeError(f"k must be of type int.\n"
+                            f"type(k): {type(k)}.")
+        if k < 1:
+            raise ValueError(f"k must be positive.\n"
+                             f"k: {k}.")
+
+        queue = N_ary_heap(capacity=k, heap_type='max')
+
+        return Balltree._k_nearest_neighbors_recursive(target, queue, self.root)
+
+    
+    @staticmethod
+    def _k_nearest_neighbors_recursive(target, queue, node):
+        """
+        Recursively add the nearest neighbors to target in the subtree rooted at node to queue and return that queue.
+
+        Selectively explore the subtree, terminating recursion at nodes whose subtree cannot contain a neighbor 
+        nearer than one already in queue.
+        """
+
+        target_to_node_distance = Balltree._distance(target, node.coordinates)
+
+        # If the queue is not yet full, 
+        # or the minimum possible distance to a point within this node's radius is less than the greatest distance in the queue, 
+        # then enqueue target_to_node_distance and recurse on this node's children.
+        if not queue.is_full() or target_to_node_distance - node.radius < queue.peek():
+            queue.push(target_to_node_distance)
+
+            # Recurse on both children if they exist, starting with the nearer one.
+
+            # If node has both a left and a right child, recurse on the nearer one and then the further one.
+            if node.left_child is not None and node.right_child is not None:
+                # Calculate the distance to each child.
+                target_to_left_child_distance = Balltree._distance(target, node.left_child.coordinates)
+                target_to_right_child_distance = Balltree._distance(target, node.right_child.coordinates)
+                # Recurse on the nearer child first.
+                if target_to_left_child_distance <= target_to_right_child_distance:
+                    Balltree._k_nearest_neighbors_recursive(target, queue, node.left_child)
+                    Balltree._k_nearest_neighbors_recursive(target, queue, node.right_child)
+                else:
+                    Balltree._k_nearest_neighbors_recursive(target, queue, node.right_child)
+                    Balltree._k_nearest_neighbors_recursive(target, queue, node.left_child)
+            # Otherwise, recurse on any extant child, terminating recursion when both children are None.
+            else:
+                if node.left_child is not None:
+                    Balltree._k_nearest_neighbors_recursive(target, queue, node.left_child)
+                if node.right_child is not None:
+                    Balltree._k_nearest_neighbors_recursive(target, queue, node.right_child)
+
+        return queue

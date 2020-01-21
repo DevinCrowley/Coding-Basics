@@ -2,6 +2,10 @@ import numpy as np
 
 
 class N_ary_heap:
+    """
+    An implicit tree structure backed by a 1-d np.ndarray. 
+    The tree is complete, and the maximum number of children of each node can be specified on creation.
+    """
     
     def __init__(self, capacity, heap_type='min', overflow_off='head', dtype=float, n_ary=2):
         """
@@ -73,7 +77,7 @@ class N_ary_heap:
     def __str__(self):
         """Return the string representation of all elements held in the underlying self._heap_array."""
         
-        return str(self._heap_array[:self.size()])
+        return str(self._heap_array[:self.get_size()])
 
 
     @staticmethod
@@ -182,7 +186,7 @@ class N_ary_heap:
     def __repr__(self):
         """Return a string representing the implicit underlying tree structure."""
 
-        return self._array_to_tree_string(self._heap_array, self._n_ary, self.size())
+        return self._array_to_tree_string(self._heap_array, self._n_ary, self.get_size())
 
 
     def _n_complete_levels(self):
@@ -216,21 +220,21 @@ class N_ary_heap:
 
 
     def _get_parent(self, child_index):
-        """Returns the index for the parent of the child at child_index."""
+        """Returns the index for the parent of the child at child_index. If child_index == 0, returns 0."""
 
-        return (child_index - 1) // self._n_ary
+        return int((child_index - 1) / self._n_ary)
 
 
-    def _get_child(self, this_index, child_number=0, assume_correct=False):
+    def _get_child(self, this_index, child_number=0):
         """Returns the index for the child_number-th child of the node at this_index."""
 
         return self._n_ary * this_index + child_number + 1
     
 
-    def _get_min_or_max_child(self, this_index, min_or_max='min'):
+    def _get_extremum_child(self, this_index):
         """
-        If min_or_max == 'min': return the index for the smallest child of the node at this_index. 
-        If min_or_max == 'max': return the index for the  largest child of the node at this_index. 
+        If self._heap_type == 'min': return the index for the smallest child of the node at this_index. 
+        If self._heap_type == 'max': return the index for the  largest child of the node at this_index. 
         
         If this is a leaf node, return None."""
 
@@ -245,8 +249,7 @@ class N_ary_heap:
 
         # Check the rest of the children for extremum candidates.
         for child_index in range(left_child_index + 1, left_child_index + self._n_ary):
-            # Set extremum to the most extreme value among this node and its children in one direction, 
-            # preferring small values if min_or_max == 'min' or else large ones if min_or_max == 'max'.
+            # Set extremum to the most extreme value among this node and its children in the direction based on self._heap_type.
 
             if child_index >= self._size:
                 # There are no more children of the node at this_index in the heap.
@@ -269,7 +272,7 @@ class N_ary_heap:
 
         
     def _sift_up(self, this_index):
-        """Exchange the value at <this_index> with its predecessors in the tree until it satisfies the appropriate heap property."""
+        """Exchange the value at this_index with its predecessors in the tree until it satisfies the appropriate heap property."""
         
         # Traverse up the heap updating this_index with its children until it is set to the root, 
         # or is at least as extreme as its children (in the appropriate direction given self._heap_type).
@@ -325,7 +328,7 @@ class N_ary_heap:
         while True:
 
             this_value = self._heap_array[this_index]
-            extremum_child_index = self._get_min_or_max_child(this_index, min_or_max=self._heap_type)
+            extremum_child_index = self._get_extremum_child(this_index)
 
             # Check whether the heap property has been satisfied, and 
             # if extremum_child_index is not None, set extremum_child_value.
@@ -353,7 +356,7 @@ class N_ary_heap:
         """Recursively exchange the value at this_index with its descendents in the tree until it satisfies the appropriate heap property."""
 
         this_value = self._heap_array[this_index]
-        extremum_child_index = self._get_min_or_max_child(this_index, min_or_max=self._heap_type)
+        extremum_child_index = self._get_extremum_child(this_index)
 
         # Check for completion.
 
@@ -388,12 +391,12 @@ class N_ary_heap:
         if num_overflow < 1:
             raise ValueError(f"num_overflow must be positive.\n"
                             f"num_overflow: {num_overflow}.")
-        if num_overflow > self.size():
+        if num_overflow > self.get_size():
             raise RuntimeError(f"num_overflow must not exceed the current size of the heap.\n"
-                               f"num_overflow: {num_overflow}, self.size(): {self.size()}.")
+                               f"num_overflow: {num_overflow}, self.get_size(): {self.get_size()}.")
 
         if self._overflow_off == 'head':
-            for _ in range(min(self.size(), num)):
+            for _ in range(min(self.get_size(), num)):
                 self.pop()
         elif self._overflow_off == 'tail':
             self.poll(num_overflow)
@@ -422,14 +425,14 @@ class N_ary_heap:
         """
 
         # Validate min_or_max_first.
-        if not isinstance(min_or_max_first, (str, NoneType)):
+        if min_or_max_first is None:
+            min_or_max_first = self._heap_type
+        elif not isinstance(min_or_max_first, str):
             raise TypeError(f"min_or_max_first must be of type str or NoneType.\n"
                             f"type(min_or_max_first): {type(min_or_max_first)}.")
         if min_or_max_first not in ['min', 'max', None]:
             raise ValueError(f"min_or_max_first must be either 'min', 'max', or None.\n"
                              f"min_or_max_first: {min_or_max_first}.")
-        if min_or_max_first is None:
-            min_or_max_first = self._heap_type
 
         # Sort in self._heap_type-last order.
         actual_size = self._size
@@ -451,7 +454,7 @@ class N_ary_heap:
         return output
 
 
-    def size(self):
+    def get_size(self):
         """
         Returns the size of the heap, i.e. the number of stored values.
         
@@ -471,6 +474,17 @@ class N_ary_heap:
         """
 
         return self._size == 0
+
+
+    def is_full(self):
+        """
+        Returns True if there are as many stored elements as spaces in the underlying array, else False.
+        
+        Returns:
+            bool: True if full, False if not full.
+        """
+        
+        return self._size == len(self._heap_array)
         
 
     def pop(self):
@@ -556,9 +570,9 @@ class N_ary_heap:
         if num_peek < 1:
             raise ValueError(f"num_peek must be positive.\n"
                             f"num_peek: {num_peek}.")
-        if num_peek > self.size():
+        if num_peek > self.get_size():
             raise RuntimeError(f"num_peek must not exceed the current size of the heap.\n"
-                               f"num_peek: {num_peek}, self.size(): {self.size()}.")
+                               f"num_peek: {num_peek}, self.get_size(): {self.get_size()}.")
 
         if self.is_empty():
             return None
@@ -688,9 +702,9 @@ class N_ary_heap:
 
         # Heapify the underlying array.
         n_complete_levels = heap._n_complete_levels()
-        n_incomplete_nodes = heap.size() - heap._n_complete_nodes()
+        n_incomplete_nodes = heap.get_size() - heap._n_complete_nodes()
         largest_complete_level_size = heap._n_ary ** (n_complete_levels - 1)
-        n_parent_nodes = int(heap.size() - n_incomplete_nodes - largest_complete_level_size + np.ceil([n_incomplete_nodes / heap._n_ary]).item(0))
+        n_parent_nodes = int(heap.get_size() - n_incomplete_nodes - largest_complete_level_size + np.ceil([n_incomplete_nodes / heap._n_ary]).item(0))
         for index in reversed(range(n_parent_nodes)):
             heap._sift_down(index)
 
@@ -724,8 +738,8 @@ class N_ary_heap:
         if new_capacity >= len(self._heap_array):
             self._heap_array = np.concatenate((self._heap_array, np.full(new_capacity, np.nan, self._heap_array.dtype)))
         else:
-            self._force_overflow(self.size() - new_capacity)
-            self._heap_array = self._heap_array[:self.size()]
+            self._force_overflow(self.get_size() - new_capacity)
+            self._heap_array = self._heap_array[:self.get_size()]
 
 '''
   _        _         _              ____                             _      _____           _              _                     
@@ -795,7 +809,7 @@ class Infinite_N_ary_heap(N_ary_heap):
         root = super().pop()
 
         if root is not None:
-            del self._heap_list [-1]
+            del self._heap_list[-1]
         
         return root
 
@@ -818,6 +832,17 @@ class Infinite_N_ary_heap(N_ary_heap):
         tail = super().poll(poll_off, unpack_single, tail_first)
         del self._heap_list[-poll_off:]
         return tail
+
+
+    def is_full(self):
+        """
+        Returns True if there are as many stored elements as spaces in the underlying array, else False.
+        
+        Returns:
+            bool: True if full, False if not full.
+        """
+        
+        raise NotImplementedError(f"is_full is not implemented in Infinite_N_ary_heap.")
 
 
     def change_capacity(self, new_capacity):
