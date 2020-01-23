@@ -126,7 +126,7 @@ class Balltree:
         Assumes array's 0th and 1st dimensions correspond to points and dimensions respectively.
         """
         
-        point_indices = _get_sample_indices(array, n_indices=spread_of)
+        point_indices = Balltree._get_sample_indices(array, n_indices=spread_of)
         
         array_sample = array[point_indices]
         
@@ -141,7 +141,7 @@ class Balltree:
         Assumes array's 0th and 1st dimensions correspond to points and dimensions respectively.
         """
         
-        point_indices = _get_sample_indices(array, n_indices=median_of)
+        point_indices = Balltree._get_sample_indices(array, n_indices=median_of)
         if point_indices.size % 2 == 0:
             point_indices = np.random.choice(point_indices, size=point_indices.size - 1, replace=False)
 
@@ -197,7 +197,7 @@ class Balltree:
             raise ValueError(f"k must be positive.\n"
                              f"k: {k}.")
 
-        queue = N_ary_heap(capacity=k, heap_type='max')
+        queue = N_ary_heap(capacity=k, heap_type='max', satellites=True)
 
         return Balltree._k_nearest_neighbors_recursive(target, queue, self.root)
 
@@ -217,7 +217,7 @@ class Balltree:
         # or the minimum possible distance to a point within this node's radius is less than the greatest distance in the queue, 
         # then enqueue target_to_node_distance and recurse on this node's children.
         if not queue.is_full() or target_to_node_distance - node.radius < queue.peek():
-            queue.push(target_to_node_distance)
+            queue.push(target_to_node_distance, node.coordinates)
 
             # Recurse on both children if they exist, starting with the nearer one.
 

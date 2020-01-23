@@ -3,11 +3,11 @@ import numpy as np
 
 class N_ary_heap:
     """
-    An implicit tree structure backed by a 1-d np.ndarray. 
+    An implicit tree structure backed by two 1-d np.ndarrays, _key_array and _satellite_array.
     The tree is complete, and the maximum number of children of each node can be specified on creation.
     """
     
-    def __init__(self, capacity, heap_type='min', overflow_off='head', dtype=float, n_ary=2):
+    def __init__(self, capacity, heap_type='min', overflow_off='head', dtype=float, n_ary=2, satellites=False):
         """
         Create an empty heap.
         
@@ -17,6 +17,7 @@ class N_ary_heap:
             overflow_off (str, optional): Determines what to discard when values are pushed when the heap is at capacity, either 'head' or 'tail'. Defaults to 'head'.
             dtype (type, optional): The dtype of the heap. Defaults to float.
             n_ary (int, optional): The maximum number of children for each node, or the branching factor of the tree. Defaults to 2.
+            satellites (bool, optional): If True, satellite data is stored alongside the corresponding keys. Defaults to False.
             
         Raises:
             TypeError: Raised if capacity is not of type int.
@@ -69,15 +70,25 @@ class N_ary_heap:
 
         self._heap_type = heap_type
         self._overflow_off = overflow_off
-        self._heap_array = np.full(capacity, np.nan, dtype)
+        self._key_array = np.full(capacity, np.nan, dtype)
+        if satellites:
+            self._satellite_array = np.full(capacity, np.nan, object)
+        else:
+            self._satellite_array = None
         self._n_ary = n_ary
         self._size = 0
 
 
     def __str__(self):
-        """Return the string representation of all elements held in the underlying self._heap_array."""
+        """Return the string representation of all elements held in the underlying self._key_array."""
         
-        return str(self._heap_array[:self.get_size()])
+        return str(self._key_array[:self.get_size()])
+
+
+    def __repr__(self):
+        """Return a string representing the implicit underlying tree structure."""
+
+        return self._array_to_tree_string(self._key_array, self._n_ary, self.get_size())
 
 
     @staticmethod
@@ -89,7 +100,7 @@ class N_ary_heap:
             array (np.ndarray): The array to be interpreted as a heap.
             n_ary (int, optional): The number of child nodes belonging to each fully internal node. Defaults to 2.
             size (int, optional): The size of the implicit heap in array. If None, assumed to equal array.size. Defaults to None.
-            dtype (type, NoneType, optional): The dtype to case array to. Defaults to None.
+            dtype (type, NoneType, optional): The dtype to cast array to. Defaults to None.
         
         Raises:
             TypeError: Raised if n_ary is not of type int.
@@ -183,12 +194,6 @@ class N_ary_heap:
         return tree
 
 
-    def __repr__(self):
-        """Return a string representing the implicit underlying tree structure."""
-
-        return self._array_to_tree_string(self._heap_array, self._n_ary, self.get_size())
-
-
     def _n_complete_levels(self):
         """Return the number of complete levels in the heap structure."""
 
@@ -245,30 +250,34 @@ class N_ary_heap:
 
         # Initially assume that the first child is the extremum.
         extremum_index = left_child_index
-        extremum_value = self._heap_array[left_child_index]
+        extremum_key = self._key_array[left_child_index]
 
         # Check the rest of the children for extremum candidates.
         for child_index in range(left_child_index + 1, left_child_index + self._n_ary):
-            # Set extremum to the most extreme value among this node and its children in the direction based on self._heap_type.
+            # Set extremum to the most extreme key among this node and its children in the direction based on self._heap_type.
 
             if child_index >= self._size:
                 # There are no more children of the node at this_index in the heap.
                 return extremum_index
 
             # Update extremum if this child is more extreme.
-            child_value = self._heap_array[child_index]
-            if self._is_more_extreme(child_value, extremum_value):
+            child_key = self._key_array[child_index]
+            if self._is_more_extreme(child_key, extremum_key):
                 extremum_index = child_index
-                extremum_value = child_value
+                extremum_key = child_key
         # End for-loop over children.
 
         return extremum_index
 
 
     def _exchange_values(self, index_x, index_y):
-        """Exchange the values at index_x and index_y."""
+        """Exchange the values (keys and satellites) at index_x and index_y."""
 
-        self._heap_array[index_x], self._heap_array[index_y] = self._heap_array[index_y], self._heap_array[index_x]
+        # Exchange keys.
+        self._key_array[index_x], self._key_array[index_y] = self._key_array[index_y], self._key_array[index_x]
+        # Exchange satellites.
+        if self._satellite_array is not None:
+            self._satellite_array[index_x], self._satellite_array[index_y] = self._satellite_array[index_y], self._satellite_array[index_x]
 
         
     def _sift_up(self, this_index):
@@ -278,19 +287,19 @@ class N_ary_heap:
         # or is at least as extreme as its children (in the appropriate direction given self._heap_type).
         while True:
             
-            this_value = self._heap_array[this_index]
+            this_key = self._key_array[this_index]
             parent_index = self._get_parent(this_index)
-            parent_value = self._heap_array[parent_index]
+            parent_key = self._key_array[parent_index]
             # Note: the parent of the root is calculated as the root.
-            # Having the same value as its 'parent', the heap property will be satisfied when this_index indicates the root (index 0).
+            # Having the same key as its 'parent', the heap property will be satisfied when this_index indicates the root (index 0).
 
-            # Check whether parent_value is at least as extreme as this_value.
-            if not self._is_more_extreme(this_value, parent_value):
+            # Check whether parent_key is at least as extreme as this_key.
+            if not self._is_more_extreme(this_key, parent_key):
                 # The heap property is satisfied.
                 return
 
             # The heap property is not yet satisfied.
-            # Exchange this_value with parent_value and update this_index to parent_index.
+            # Exchange this_key with parent_key and update this_index to parent_index.
             self._exchange_values(this_index, parent_index)
             this_index = parent_index
 
@@ -299,23 +308,23 @@ class N_ary_heap:
     def _sift_up_recursive(self, this_index):
         """Recursively exchange the value at this_index with its predecessors in the tree until it satisfies the appropriate heap property."""
         
-        this_value = self._heap_array[this_index]
+        this_key = self._key_array[this_index]
         parent_index = self._get_parent(this_index)
-        parent_value = self._heap_array[parent_index]
+        parent_key = self._key_array[parent_index]
 
         exchange_and_recurse = False
         if self._heap_type == 'min':
-            if parent_value > this_value:
+            if parent_key > this_key:
                 exchange_and_recurse = True
         elif self._heap_type == 'max':
-            if parent_value < this_value:
+            if parent_key < this_key:
                 exchange_and_recurse = True
         else:
             raise ValueError(f"self._heap_type must be either 'min' or 'max'.\n"
                              f"self._heap_type: {self._heap_type}.")
         
         if exchange_and_recurse:
-            # Exchange this_value with parent_value.
+            # Exchange this_key with parent_key.
             self._exchange_values(this_index, parent_index)
             self.sift_up(parent_index)
     
@@ -327,26 +336,26 @@ class N_ary_heap:
         # or is at least as extreme as its children (in the appropriate direction given self._heap_type).
         while True:
 
-            this_value = self._heap_array[this_index]
+            this_key = self._key_array[this_index]
             extremum_child_index = self._get_extremum_child(this_index)
 
             # Check whether the heap property has been satisfied, and 
-            # if extremum_child_index is not None, set extremum_child_value.
+            # if extremum_child_index is not None, set extremum_child_key.
 
             if extremum_child_index is None:
                 # The node at this_index is a leaf node, satisfying the heap property.
                 return
 
-            # extremum_child_index is a valid index. Set extremum_child_value.
-            extremum_child_value = self._heap_array[extremum_child_index]
+            # extremum_child_index is a valid index. Set extremum_child_key.
+            extremum_child_key = self._key_array[extremum_child_index]
 
-            # Check whether this_value is at least as extreme as extreme_child_value.
-            if not self._is_more_extreme(extremum_child_value, this_value):
+            # Check whether this_key is at least as extreme as extreme_child_key.
+            if not self._is_more_extreme(extremum_child_key, this_key):
                 # The heap property is satisfied.
                 return
 
             # The heap property is not yet satisfied.
-            # Exchange this_value with extremum_child_value and update this_index to extremum_child_index.
+            # Exchange this_key with extremum_child_key and update this_index to extremum_child_index.
             self._exchange_values(this_index, extremum_child_index)
             this_index = extremum_child_index
 
@@ -355,7 +364,7 @@ class N_ary_heap:
     def _sift_down_recursive(self, this_index):
         """Recursively exchange the value at this_index with its descendents in the tree until it satisfies the appropriate heap property."""
 
-        this_value = self._heap_array[this_index]
+        this_key = self._key_array[this_index]
         extremum_child_index = self._get_extremum_child(this_index)
 
         # Check for completion.
@@ -363,13 +372,13 @@ class N_ary_heap:
         if extremum_child_index is None:
             # The node at this_index is a leaf node.
             return
-        extremum_child_value = self._heap_array[extremum_child_index]
-        # Check whether this_value is at least as extreme as extreme_child_value.
+        extremum_child_key = self._key_array[extremum_child_index]
+        # Check whether this_key is at least as extreme as extreme_child_key.
         if self._heap_type == 'min':
-            if this_value <= extremum_child_value:
+            if this_key <= extremum_child_key:
                 return
         elif self._heap_type == 'max':
-            if this_value >= extremum_child_value:
+            if this_key >= extremum_child_key:
                 return
         else:
             raise ValueError(f"self._heap_type must be either 'min' or 'max'.\n"
@@ -415,43 +424,29 @@ class N_ary_heap:
 
     '''
 
-    def heapsort(self, min_or_max_first=None):
+    def get_keys(self):
         """
-        Performs heapsort in place and returns a copy of the sorted array, possibly reversed based on min_or_max_first.
+        Returns a copy of the keys stored in the underlying self._key_array.
         
-        Args:
-            min_or_max_first (bool, NoneType, optional): Determines whether the returned array is ascending or descending. 
-            If None, the heap_type is assumed. Does not affect the resultant state of the underlying heap. Defaults to None.
+        Returns:
+            np.ndarray: A copy of the keys in self.
+        """
+        
+        return np.copy(self._key_array[:self._size])
+
+    
+    def get_satellites(self):
+        """
+        Returns a copy of the satellites stored in the underlying self._satellite_array, or None if it is None.
+        
+        Returns:
+            np.ndarray, NoneType: A copy of the satellites in self, or None if satellites are not stored.
         """
 
-        # Validate min_or_max_first.
-        if min_or_max_first is None:
-            min_or_max_first = self._heap_type
-        elif not isinstance(min_or_max_first, str):
-            raise TypeError(f"min_or_max_first must be of type str or NoneType.\n"
-                            f"type(min_or_max_first): {type(min_or_max_first)}.")
-        if min_or_max_first not in ['min', 'max', None]:
-            raise ValueError(f"min_or_max_first must be either 'min', 'max', or None.\n"
-                             f"min_or_max_first: {min_or_max_first}.")
-
-        # Sort in self._heap_type-last order.
-        actual_size = self._size
-        while not self.is_empty():
-            self._exchange_values(0, self._size - 1)
-            self._size -= 1
-            self._sift_down(0)
-        self._size = actual_size
-        
-        if min_or_max_first != self._heap_type:
-            output = np.copy(self._heap_array[:self._size])
-        
-        # Restore heap property.
-        self._heap_array[:self._size] = np.flip(self._heap_array[:self._size])
-
-        if min_or_max_first == self._heap_type:
-            output = np.copy(self._heap_array[:self._size])
-        
-        return output
+        if self._satellite_array is None:
+            return None
+        else:
+            return np.copy(self._satellite_array[:self._size])
 
 
     def get_size(self):
@@ -484,21 +479,30 @@ class N_ary_heap:
             bool: True if full, False if not full.
         """
         
-        return self._size == len(self._heap_array)
+        return self._size == len(self._key_array)
         
 
-    def pop(self):
+    def pop(self, get_satellite=False):
         """
         Gracefully removes and returns the root. If the heap is empty, returns None.
+
+        Args:
+            get_satellite (object, optional): If True, rather than just the root key, a tuple is returned 
+                whose second value is the satellite corresponding to the root key, or None if satellites are not stored. Defaults to False.
         
         Returns:
-            dtype: The root of the heap, or None if the heap is empty.
+            dtype, tuple: The root of the heap, or None if the heap is empty. If get_satellite is False, this is just root_key. Otherwise, this is (root_key, root_satellite).
         """
 
         if self.is_empty():
             return None
         
-        root = self._heap_array[0]
+        # Set root to either root_key or (root_key, root_satellite).
+        root_key = self._key_array[0]
+        root = root_key
+        if get_satellite:
+            root_satellite = self._satellite_array[0]
+            root = (root_key, root_satellite)
 
         # Exchange the root with the last item in the heap, 
         # remove it from the heap by decrementing size, 
@@ -510,45 +514,66 @@ class N_ary_heap:
         return root
 
 
-    def replace(self, new_value):
+    def replace(self, new_key, new_satellite=None, get_satellite=False):
         """
         Replaces the root with new_value and sifts it down. Returns the old root.
         
         Args:
-            new_value (dtype): The value to be inserted.
+            new_key (dtype): The key to be inserted.
+            new_satellite (object): The corresponding satellite to be inserted. Defaults to None.
+            get_satellite (object, optional): If True, rather than just the root key, a tuple is returned 
+                whose second value is the satellite corresponding to the root key, or None if satellites are not stored. Defaults to False.
         
         Returns:
-            dtype: The root at insertion time.
+            dtype, tuple: The root at insertion time. If get_satellite is False, this is just root_key. Otherwise, this is (root_key, root_satellite).
         """
 
         if self.is_empty():
             root = None
-            self.push(new_value)
+            self.push(new_key, new_satellite)
         else:
-            root = self._heap_array[0]
-            # Override the value at the root and restore the heap property.
-            self._heap_array[0] = new_value
+            # Set root to either root_key or (root_key, root_satellite).
+            root_key = self._key_array[0]
+            root = root_key
+            if get_satellite:
+                root_satellite = self._satellite_array[0]
+                root = (root_key, root_satellite)
+            # Override the values at the root and restore the heap property.
+            self._key_array[0] = new_key
+            if self._satellite_array is not None: self._satellite_array[0] = new_satellite
             self._sift_down(0)
         
         return root
     
 
-    def peek(self):
+    def peek(self, get_satellite=False):
         """
         If there are values in the heap, return values starting at the root. 
         If the heap is empty, return None.
 
+        Args:
+            get_satellite (object, optional): If True, rather than just the root key, a tuple is returned 
+                whose second value is the satellite corresponding to the root key, or None if satellites are not stored. Defaults to False.
+
         Returns:
-            (dtype, NoneType): The root value with the type specified at initialization (default float), or None.
+            (dtype, tuple, NoneType): The root value with the type specified at initialization (default float), or None. 
+                 If get_satellite is False, this is just root_key. Otherwise, this is (root_key, root_satellite).
         """
 
         if self._size == 0:
             return None
         else:
-            return self._heap_array[0]
+            # Set root to either root_key or (root_key, root_satellite).
+            root_key = self._key_array[0]
+            root = root_key
+            if get_satellite:
+                root_satellite = self._satellite_array[0] if self._satellite_array is not None else None
+                root = (root_key, root_satellite)
+            
+            return root
 
 
-    def peek_tail(self, num_peek=1, unpack_single=True, tail_first=True):
+    def peek_tail(self, num_peek=1, unpack_single=True, tail_first=True, get_satellite=False):
         """
         If the heap is empty, return None. Otherwise, 
         perform heapsort in place with self._heap_type at the root, 
@@ -558,9 +583,13 @@ class N_ary_heap:
             num_peek (int): The number of values to peek, minimum 1. Defaults to 1.
             unpack_single (bool): If True and num_peek == 1, then return the single value rather than a list. Defaults to True.
             tail_first (bool): If True, returns values in tail-first order, else in sorted order. Defaults to True.
+            get_satellite (object, optional): If True, rather than just the tail key(s), a tuple is returned 
+                whose second value is the satellite(s) corresponding to the tail key(s), or None if satellites are not stored. Defaults to False.
         
         Returns:
-            dtype, list, NoneType: The tail of the sorted self._heap_array.
+            dtype, np.ndarray, tuple, NoneType: A copy of the tail of the sorted self._key_array. 
+                If get_satellite is False, this is just np.ndarray(tail_keys). Otherwise, this is tuple(tail_keys, tail_satellites). 
+                If num_peek == 1 and unpack_single, then this is just dtype(tail_key) or tuple(tail_key, tail_satellite).
         """
 
         # Validate inputs.
@@ -579,16 +608,33 @@ class N_ary_heap:
 
         self.heapsort()
 
+        # Set tail to either tail_keys or (tail_keys, tail_satellites).
+        tail_keys = np.copy(self._key_array[-num_peek:])
+        tail = tail_keys
+        if get_satellite:
+            tail_satellites = np.copy(self._satellite_array[-num_peek:]) if self._satellite_array is not None else None
+            tail = (tail_keys, tail_satellites)
+
+        # Flip tail if necessary.
+        if tail_first:
+            if get_satellite:
+                tail[0] = np.flip(tail[0])
+                tail[1] = np.flip(tail[1])
+            else:
+                tail = np.flip(tail)
+
+        # Unpack unary arrays if appropriate.
         if unpack_single and num_peek == 1:
-            return self._heap_array[self._size - 1]
-        else:
-            tail = self._heap_array[-num_peek:]
-            if tail_first:
-                tail = tail.flip()
-            return list(tail)
+            if get_satellite:
+                tail[0] = tail[0][0]
+                tail[1] = tail[1][0]
+            else:
+                tail = tail[0]
+        
+        return tail
 
 
-    def poll(self, poll_off=1, unpack_single=True, tail_first=True):
+    def poll(self, poll_off=1, unpack_single=True, tail_first=True, get_satellite=False):
         """
         If the heap is empty, return None. Otherwise, 
         perform heapsort in place with self._heap_type at the root, 
@@ -598,9 +644,12 @@ class N_ary_heap:
             poll_off (int): The number of values to poll, minimum 1. Defaults to 1.
             unpack_single (bool): If True and num_peek == 1, then return the single value rather than a list. Defaults to True.
             tail_first (bool): If True, returns values in tail-first order, else in sorted order. Defaults to True.
+            get_satellite (object, optional): If True, rather than just the tail key(s), a tuple is returned 
+                whose second value is the satellite(s) corresponding to the tail key(s), or None if satellites are not stored. Defaults to False.
         
         Returns:
-            (dtype, list, NoneType): The last item in the sorted heap, a list containing the last items, or None if the heap was empty.
+            (dtype, np.ndarray, tuple, NoneType): The last key in the sorted heap, a np.ndarray containing the last keys, 
+                a tuple containing the last key(s) and the last satellite(s), or None if the heap was empty.
         """
 
         # Validate inputs.
@@ -611,81 +660,129 @@ class N_ary_heap:
             raise ValueError(f"poll_off must be positive.\n"
                             f"poll_off: {poll_off}.")
 
-        tail = self.peek_tail(poll_off, unpack_single, tail_first) # Note: sorts self._heap_array.
+        tail = self.peek_tail(poll_off, unpack_single, tail_first) # Note: sorts self._key_array.
         self._size -= poll_off
         return tail
 
 
-    def push(self, new_value):
+    def push(self, new_key, new_satellite=None, get_satellite=False):
         """
-        Inserts new_value into the heap and restores the heap property. 
+        Inserts new_key into the heap and restores the heap property. 
         
-        If the heap is already at capacity, then new_value is compared to either the head (root) or tail 
-        depending on self._overflow_off, and if new_value is less extreme in the direction of the head or tail, 
-        then that value is removed and new_value is inserted.
+        If the heap is already at capacity, then new_key is compared to either the head (root) or tail 
+        depending on self._overflow_off, and if new_key is less extreme in the direction of the head or tail, 
+        then that value is removed and new_key is inserted.
         
         Args:
-            new_value (dtype): The value to be inserted
+            new_key (dtype): The key to be inserted.
+            new_satellite (object): The corresponding satellite to be inserted. Defaults to None.
+            get_satellite (bool, optional): If True and self overflows, then the discarded satellite is also returned. Defaults to False.
         
         Raises:
             ValueError: Raised if self._overflow_off is encountered as something other than 'head' or 'tail'.
         
         Returns:
-            dtype, NoneType: If the heap overflowed then the discarded value is returned, else None is returned.
+            dtype, tuple, NoneType: If the heap overflowed then the discarded value is returned, else None is returned.
         """
 
-        if self._size < len(self._heap_array):
-            # Add new_value to the first available space in the array, sift up, and increment size.
-            self._heap_array[self._size] = new_value
+        if self._size < len(self._key_array):
+            # Add new_key to the first available space in the array, sift up, and increment size.
+            self._key_array[self._size] = new_key
+            if self._satellite_array is not None: self._satellite_array[self._size] = new_satellite
             self._size += 1
             self._sift_up(self._size - 1)
             return None
         else:
             # Already at capacity. Discard and return a value.
             if self._overflow_off == 'head':
-                # If the root is not more extreme than new_value, do not insert new_value.
-                if not self._is_more_extreme(self._heap_array[0], new_value):
-                    return new_value
+                # If the root is not more extreme than new_key, do not insert new_key.
+                if not self._is_more_extreme(self._key_array[0], new_key):
+                    return (new_key, new_satellite) if get_satellite else new_key
                 else:
-                    # Pop and return the root, replacing it with new_value and restoring the heap property.
-                    return self.replace(new_value)
+                    # Pop and return the root, replacing it with new_key and restoring the heap property.
+                    return self.replace(new_key, new_satellite, get_satellite)
             elif self._overflow_off == 'tail':
                 # Perform heapsort in place with self._heap_type first, 
-                # then replace the last item if it is less extreme than new_value.
-                tail = self.peek_tail() # Note: sorts self._heap_array.
-                # If the tail is at least as extreme as new_value, do not insert new_value.
-                if not self._is_more_extreme(new_value, tail):
-                    return new_value
+                # then replace the last item if it is less extreme than new_key.
+                tail = self.peek_tail() # Note: sorts self._key_array.
+                # If the tail is at least as extreme as new_key, do not insert new_key.
+                if not self._is_more_extreme(new_key, tail):
+                    return (new_key, new_satellite) if get_satellite else new_key
                 else:
-                    # Replace the tail of self._heap_array with the new_value and return the polled tail.
+                    # Replace the tail of self._key_array with the new_key and return the polled tail.
                     self._size -= 1
-                    self.push(new_value)
+                    self.push(new_key, new_satellite)
                     return tail
             else:
                 raise ValueError(f"overflow_off must be either 'head' or 'tail'.\n"
                                  f"overflow_off: {overflow_off}.")
+    
+    
+    def heapsort(self, min_or_max_first=None):
+        """
+        Performs heapsort in place and returns a copy of the sorted array, possibly reversed based on min_or_max_first.
+        
+        Args:
+            min_or_max_first (bool, NoneType, optional): Determines whether the returned array is ascending or descending. 
+            If None, the heap_type is assumed. Does not affect the resultant state of the underlying heap. Defaults to None.
+        """
+
+        # Validate min_or_max_first.
+        if min_or_max_first is None:
+            min_or_max_first = self._heap_type
+        elif not isinstance(min_or_max_first, str):
+            raise TypeError(f"min_or_max_first must be of type str or NoneType.\n"
+                            f"type(min_or_max_first): {type(min_or_max_first)}.")
+        if min_or_max_first not in ['min', 'max', None]:
+            raise ValueError(f"min_or_max_first must be either 'min', 'max', or None.\n"
+                             f"min_or_max_first: {min_or_max_first}.")
+
+        # Sort in self._heap_type-last order.
+        actual_size = self._size
+        while not self.is_empty():
+            self._exchange_values(0, self._size - 1)
+            self._size -= 1
+            self._sift_down(0)
+        self._size = actual_size
+        
+        if min_or_max_first != self._heap_type:
+            output = np.copy(self._key_array[:self._size])
+        
+        # Restore heap property.
+        self._key_array[:self._size] = np.flip(self._key_array[:self._size])
+
+        if min_or_max_first == self._heap_type:
+            output = np.copy(self._key_array[:self._size])
+        
+        return output
+
 
     @classmethod
-    def heapify(cls, array, capacity=None, heap_type='min', overflow_off='head', dtype=float, n_ary=2):
+    def heapify(cls, key_array, satellite_array=None, capacity=None, heap_type='min', overflow_off='head', dtype=float, n_ary=2, satellites=False):
         """
         Construct a heap from array. Its capacity is set to the size of the array.
         
         Args:
-            array (np.ndarray): The array to be made into a heap.
+            key_array (np.ndarray): The array of keys to be made into a heap.
+            satellite_array (np.ndarray, NoneType, optional): The array of satellites corresponding to the keys in key_array, or None if there are no such satellites. Defaults to None.
             capacity (int, NoneType, optional): The capacity of the new array. None is interpreted as the size of array. Defaults to None.
             heap_type (str, optional): The type of heap to be made, either 'min' or 'max'. Defaults to 'min'.
             overflow_off (str, optional): Determines what to discard when values are pushed when the heap is at capacity, either 'head' or 'tail'. Defaults to 'head'.
             dtype (type, optional): The dtype of the heap. Defaults to float.
             n_ary (int, optional): The maximum number of children for each node, or the branching factor of the tree. Defaults to 2.
+            satellites (bool, optional): If True, satellite data is stored alongside the corresponding keys. Overridden to True if satellite_array is provided. Defaults to False.
 
         Returns:
-            N_ary_heap: The heap constructed from array.
+            N_ary_heap: The heap constructed from key_array and optionally satellite_array.
         """
 
         # Validate inputs.
-        array = np.array(array, dtype=dtype)
+        key_array = np.array(key_array, dtype=dtype).flatten() # Side effect: breaks alias.
+        if satellite_array is not None:
+            satellites = True # Override satellites to True if satellite_array is provided.
+            satellite_array = np.array(satellite_array).flatten() # Side effect: breaks alias.
         if capacity is None:
-            capacity = array.size
+            capacity = key_array.size
         if not isinstance(capacity, int):
             raise TypeError(f"capacity must be of type int.\n"
                             f"type(capacity): {type(capacity)}.")
@@ -693,14 +790,15 @@ class N_ary_heap:
             raise ValueError(f"capacity must be positive.\n"
                             f"capacity: {capacity}.")
 
-        # Make empty heap capable of holding the entire array.
-        heap = N_ary_heap(array.size, heap_type, overflow_off, dtype, n_ary)
+        # Make empty heap capable of holding the entire key_array.
+        heap = N_ary_heap(key_array.size, heap_type, overflow_off, dtype, n_ary, satellites)
 
         # Manually override heap attributes.
-        heap._heap_array = array.flatten() # Note: produces a copy of array, not a view.
-        heap._size = array.size
+        heap._key_array = key_array
+        heap._satellite_array = satellite_array
+        heap._size = key_array.size
 
-        # Heapify the underlying array.
+        # Heapify the underlying key_array.
         n_complete_levels = heap._n_complete_levels()
         n_incomplete_nodes = heap.get_size() - heap._n_complete_nodes()
         largest_complete_level_size = heap._n_ary ** (n_complete_levels - 1)
@@ -715,7 +813,7 @@ class N_ary_heap:
 
     def change_capacity(self, new_capacity):
         """
-        Reassign the underlying self._heap_array to an array of the desired size.
+        Reassign the underlying self._key_array, and self._satellite_array if it is not None, to an array of the desired size.
         If the new_capacity is less than the current size of the heap, 
         the excess elements are overflow and are discarded.
         
@@ -735,11 +833,15 @@ class N_ary_heap:
             raise ValueError(f"new_capacity must be positive.\n"
                             f"new_capacity: {new_capacity}.")
         
-        if new_capacity >= len(self._heap_array):
-            self._heap_array = np.concatenate((self._heap_array, np.full(new_capacity, np.nan, self._heap_array.dtype)))
+        if new_capacity >= len(self._key_array):
+            self._key_array = np.concatenate((self._key_array, np.full(new_capacity, np.nan, self._key_array.dtype)))
+            if self._satellite_array is not None: 
+                self._satellite_array = np.concatenate((self._satellite_array, np.full(new_capacity, np.nan, self._satellite_array.dtype)))
+
         else:
             self._force_overflow(self.get_size() - new_capacity)
-            self._heap_array = self._heap_array[:self.get_size()]
+            self._key_array = self._key_array[:self._size]
+            if self._satellite_array is not None: self._satellite_array = self._satellite_array[:self._size]
 
 '''
   _        _         _              ____                             _      _____           _              _                     
@@ -754,7 +856,7 @@ class N_ary_heap:
 
 class Infinite_N_ary_heap(N_ary_heap):
 
-    def __init__(self, heap_type='min', overflow_off='head', dtype=float, n_ary=2):
+    def __init__(self, heap_type='min', overflow_off='head', dtype=float, n_ary=2, satellites=True):
         """
         Create an empty heap.
         
@@ -763,6 +865,7 @@ class Infinite_N_ary_heap(N_ary_heap):
             overflow_off (str, optional): Determines what to discard when values are pushed when the heap is at capacity, either 'head' or 'tail'. Defaults to 'head'.
             dtype (type, optional): The dtype of the heap. Defaults to float.
             n_ary (int, optional): The maximum number of children for each node, or the branching factor of the tree. Defaults to 2.
+            satellites (bool, optional): If False, satellite data is not stored alongside the corresponding keys. Defaults to True.
             
         Raises:
             ValueError: Raised if heap_type is not 'min' or 'max'.
@@ -773,9 +876,11 @@ class Infinite_N_ary_heap(N_ary_heap):
             ValueError: Raised if n_ary is not positive.
         """
 
-        super().__init__(1, heap_type, overflow_off, dtype, n_ary)
-        self._heap_array = []
-        self._heap_list = self._heap_array # Aliasing for clarity.
+        super().__init__(1, heap_type, overflow_off, dtype, n_ary, satellites)
+        self._key_array = []
+        if self._satellite_array is not None: self._satellite_array = []
+        self._key_list = self._key_array # Aliasing for clarity.
+        self._satellite_list = self._satellite_array # Aliasing for clarity.
 
 
     def _force_overflow(self, num_overflow):
@@ -784,37 +889,69 @@ class Infinite_N_ary_heap(N_ary_heap):
         raise NotImplementedError(f"_force_overflow is not implemented in Infinite_N_ary_heap.")
     
 
-    def push(self, new_value):
+    def get_keys(self):
+        """
+        Returns the keys stored in the underlying self._key_array, not a copy.
+        
+        Returns:
+            list: The keys in self.
+        """
+        
+        return self._key_array[:self.get_size()]
+
+    
+    def get_satellites(self):
+        """
+        Returns the satellites stored in the underlying self._satellite_array, or None if it is None. Not a copy.
+        
+        Returns:
+            list, NoneType: A copy of the satellites in self, or None if satellites are not stored.
+        """
+
+        if self._satellite_array is None:
+            return None
+        else:
+            return self._satellite_array[:self.get_size()]
+
+
+    def push(self, new_key, new_satellite=None):
         """
         Inserts new_value into the heap and restores the heap property. 
         
         Args:
-            new_value (dtype): The value to be inserted
+            new_key (dtype): The key to be inserted.
+            new_satellite (object): The corresponding satellite to be inserted. Defaults to None.
         """
 
-        # Add new_value to the first available space in the array, sift up, and increment size.
-        self._heap_list.append(new_value)
+        # Add new_key and new_satellite to the first available space in the array, sift up, and increment size.
+        self._key_list.append(new_key)
+        if self._satellite_list is not None: self._satellite_list.append(new_satellite)
         self._size += 1
         self._sift_up(self._size - 1)
 
 
-    def pop(self):
+    def pop(self, get_satellite=False):
         """
         Gracefully removes and returns the root. If the heap is empty, returns None.
+
+        Args:
+            get_satellite (object, optional): If True, rather than just the root key, a tuple is returned 
+                whose second value is the satellite corresponding to the root key, or None if satellites are not stored. Defaults to False.
         
         Returns:
-            dtype: The root of the heap, or None if the heap is empty.
+            dtype, tuple: The root of the heap, or None if the heap is empty.
         """
     
-        root = super().pop()
+        root = super().pop(get_satellite)
 
         if root is not None:
-            del self._heap_list[-1]
+            del self._key_list[-1]
+            if self._satellite_list is not None: del self._satellite_list[-1]
         
         return root
 
     
-    def poll(self, poll_off=1, unpack_single=True, tail_first=True):
+    def poll(self, poll_off=1, unpack_single=True, tail_first=True, get_satellite=False):
         """
         If the heap is empty, return None. Otherwise, 
         perform heapsort in place with self._heap_type at the root, 
@@ -824,13 +961,18 @@ class Infinite_N_ary_heap(N_ary_heap):
             poll_off (int): The number of values to poll, minimum 1. Defaults to 1.
             unpack_single (bool): If True and num_peek == 1, then return the single value rather than a list. Defaults to True.
             tail_first (bool): If True, returns values in tail-first order, else in sorted order. Defaults to True.
+            get_satellite (object, optional): If True, rather than just the tail key, a tuple is returned 
+                whose second value is the satellite corresponding to the tail key, or None if satellites are not stored. Defaults to False.
         
         Returns:
-            (dtype, list, NoneType): The last item in the sorted heap, a list containing the last items, or None if the heap was empty.
+            (dtype, tuple, list, NoneType): The last_key in the sorted heap, a list of the last_items, 
+                a tuple containing last_key(s) and last_satellite(s), or None if the heap was empty.
         """
 
-        tail = super().poll(poll_off, unpack_single, tail_first)
-        del self._heap_list[-poll_off:]
+        tail = super().poll(poll_off, unpack_single, tail_first, get_satellite)
+        del self._key_list[-poll_off:]
+        if self._satellite_list is not None: del self._satellite_list[-poll_off:]
+
         return tail
 
 
@@ -860,25 +1002,29 @@ class Infinite_N_ary_heap(N_ary_heap):
 
 
     @classmethod
-    def heapify(cls, array, heap_type='min', overflow_off='head', dtype=float, n_ary=2):
+    def heapify(cls, key_array, satellite_array=None, heap_type='min', overflow_off='head', dtype=float, n_ary=2, satellites=True):
         """
         Construct a heap from array.
         
         Args:
-            array (np.ndarray): The array to be made into a heap.
+            key_array (np.ndarray): The array of keys to be made into a heap.
+            satellite_array (np.ndarray, NoneType, optional): The array of satellites corresponding to the keys in key_array, or None if there are no such satellites. Defaults to None.
             capacity (int, NoneType, optional): The capacity of the new array. None is interpreted as the size of array. Defaults to None.
             heap_type (str, optional): The type of heap to be made, either 'min' or 'max'. Defaults to 'min'.
             overflow_off (str, optional): Determines what to discard when values are pushed when the heap is at capacity, either 'head' or 'tail'. Defaults to 'head'.
             dtype (type, optional): The dtype of the heap. Defaults to float.
             n_ary (int, optional): The maximum number of children for each node, or the branching factor of the tree. Defaults to 2.
+            satellites (bool, optional): If False, satellite data is not stored alongside the corresponding keys. Defaults to True.
 
         Returns:
-            N_ary_heap: The heap constructed from array.
+            Infinite_N_ary_heap: The heap constructed from array.
         """
 
-        heap = super().heapify(array, array.size, heap_type, overflow_off, dtype, n_ary)
+        heap = super().heapify(key_array, satellite_array, key_array.size, heap_type, overflow_off, dtype, n_ary, satellites)
 
-        heap._heap_array = list(heap._heap_array)
-        heap._heap_list = heap._heap_array # Aliasing for clarity.
+        heap._key_array = list(heap._key_array)
+        if heap._satellite_array is not None: heap._satellite_array = list(heap._satellite_array)
+        heap._key_list = heap._key_array # Aliasing for clarity.
+        heap._satellite_list = heap._satellite_array # Aliasing for clarity.
 
         return heap
