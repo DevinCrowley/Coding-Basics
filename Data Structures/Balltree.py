@@ -1,6 +1,6 @@
 import numpy as np
 
-from Heaps import N_ary_heap
+from .Heaps import N_ary_heap, Infinite_N_ary_heap
 
 
 class _Balltree_node:
@@ -155,18 +155,19 @@ class Balltree:
         return np.sqrt(np.sum((point_y - point_x)**2))
 
 
-    def k_nearest_neighbors_search(self, target, k):
+    def k_nearest_neighbors_search(self, target, k=None, min_distance=None):
         """
-        Create and return a max-first priority queue with capacity k to store all encountered nearest neighbors to target.
+        Create and return a max-first priority queue (search_heap) with capacity k to store all encountered nearest neighbors to target within min_distance.
 
         Recursively follows the tree starting at self.root by making the first call to _k_nearest_neighbors_recursive. 
         
-        The tree is searched selectively, terminating recursion at nodes whose subtree cannot contain nearer neighbors 
-        than have already been encountered.
+        The tree is searched selectively, terminating recursion at nodes whose subtree cannot contain viable neighbors, 
+        i.e. neighbors that are within min_distance of target, and that are nearer than those already encountered if k neighbors have already been found.
         
         Args:
             target (np.ndarray, seq): The coordinates of the point whose nearest neighbors are returned.
-            k (int): The number of nearest-neighbors to search for.
+            k (int, optional): The number of nearest-neighbors to search for, or None to provide no upper-limit. Defaults to None.
+            min_distance (float, optional): The minimum distance from target to consider as a nearest neighbor, or None to provide no upper-limit. Defaults to None.
         
         Raises:
             TypeError: Raised if target has values of types other than float or int.
@@ -176,7 +177,7 @@ class Balltree:
             ValueError: Raised if k is not positive.
         
         Returns:
-            N_ary_heap: The heap used as a max-first priority queue holding the (up to) k nearest neighbors to target in self.
+            N_ary_heap, Infinite_N_ary_heap: The heap used as a max-first priority queue (search_heap) holding the (up to) k nearest neighbors to target in self.
         """
 
         # Validate inputs.
@@ -190,34 +191,69 @@ class Balltree:
         if len(target) != len(self.root.coordinates):
             raise ValueError(f"target must have the same length as the coordinates in self, the Balltree.\n"
                              f"len(target): {len(taraget)}, len(self.root.coordinates): {len(self.root.coordinates)}.")
-        if not isinstance(k, int):
-            raise TypeError(f"k must be of type int.\n"
-                            f"type(k): {type(k)}.")
-        if k < 1:
-            raise ValueError(f"k must be positive.\n"
-                             f"k: {k}.")
+        if k is not None:
+            if not isinstance(k, int):
+                raise TypeError(f"k must of type int or NoneType.\n"
+                                f"type(k): {type(k)}.")
+            if k < 1:
+                raise ValueError(f"If provided, k must be positive.\n"
+                                f"k: {k}.")
+        if min_distance is not None:
+            if not isinstance(min_distance, [float, int]):
+                raise TypeError(f"min_distance must be of type int or float.\n"
+                                f"type(min_distance): {type(min_distance)}.")
+            if min_distance < 0:
+                raise ValueError(f"min_distance must be nonnegative.\n"
+                                f"min_distance: {min_distance}.")
 
-        queue = N_ary_heap(capacity=k, heap_type='max', satellites=True)
+        # Create search_heap, the heap to be used as a max-first priority queue.
+        if k is None:
+            search_heap = Infinite_N_ary_heap(heap_type='max', satellites=True)
+        else:
+            search_heap = N_ary_heap(capacity=k, heap_type='max', satellites=True)
 
-        return Balltree._k_nearest_neighbors_recursive(target, queue, self.root)
+        # Call recursive helper function on self.root.
+        return self._k_nearest_neighbors_search_recursive(target, search_heap, min_distance, self.root)
 
-    
+
     @staticmethod
-    def _k_nearest_neighbors_recursive(target, queue, node):
+    def _k_nearest_neighbors_search_recursive(target, search_heap, min_distance, node):
         """
-        Recursively add the nearest neighbors to target in the subtree rooted at node to queue and return that queue.
+        Recursively add the nearest neighbors to target in the subtree rooted at node to search_heap and return that search_heap.
 
-        Selectively explore the subtree, terminating recursion at nodes whose subtree cannot contain a neighbor 
-        nearer than one already in queue.
+        Selectively explore the subtree, terminating recursion at nodes whose subtree cannot contain viable neighbors, 
+        i.e. neighbors that are within min_distance of target, and that are nearer than those already encountered if k neighbors have already been found.
         """
 
         target_to_node_distance = Balltree._distance(target, node.coordinates)
 
-        # If the queue is not yet full, 
-        # or the minimum possible distance to a point within this node's radius is less than the greatest distance in the queue, 
-        # then enqueue target_to_node_distance and recurse on this node's children.
-        if not queue.is_full() or target_to_node_distance - node.radius < queue.peek():
-            queue.push(target_to_node_distance, node.coordinates)
+        # If the ball centered on this node may contain a viable nearest neighbor, 
+        # check the point at this node and recurse on this node's children, 
+        # if they exist, starting with the nearer one.
+
+        # There may be a viable nearest neighbor in the ball centered on this node if: 
+            # this ball overlaps the space within min_distance of target, 
+            # and if either 
+                # the search_heap is not full 
+                # or 
+                # the distance between this ball and target is less than the greatest distance stored in the search_heap.
+
+        if (
+            min_distance is None or target_to_node_distance - node.radius <= min_distance
+            and
+            (
+               not search_heap.is_full() 
+               or 
+               target_to_node_distance - node.radius < search_heap.peek() 
+            )
+        ):
+
+            # If node is within min_distance of target, push it to search_heap.
+
+            # Note: if search_heap.is_full() and target_to_node_distance is not less than the greatest distance currently in search_heap, 
+            # then it will be discarded.
+            if min_distance is None or target_to_node_distance <= min_distance:
+                search_heap.push(target_to_node_distance, node.coordinates)
 
             # Recurse on both children if they exist, starting with the nearer one.
 
@@ -228,16 +264,16 @@ class Balltree:
                 target_to_right_child_distance = Balltree._distance(target, node.right_child.coordinates)
                 # Recurse on the nearer child first.
                 if target_to_left_child_distance <= target_to_right_child_distance:
-                    Balltree._k_nearest_neighbors_recursive(target, queue, node.left_child)
-                    Balltree._k_nearest_neighbors_recursive(target, queue, node.right_child)
+                    Balltree._k_nearest_neighbors_search_recursive(target, search_heap, min_distance, node.left_child)
+                    Balltree._k_nearest_neighbors_search_recursive(target, search_heap, min_distance, node.right_child)
                 else:
-                    Balltree._k_nearest_neighbors_recursive(target, queue, node.right_child)
-                    Balltree._k_nearest_neighbors_recursive(target, queue, node.left_child)
+                    Balltree._k_nearest_neighbors_search_recursive(target, search_heap, min_distance, node.right_child)
+                    Balltree._k_nearest_neighbors_search_recursive(target, search_heap, min_distance, node.left_child)
             # Otherwise, recurse on any extant child, terminating recursion when both children are None.
             else:
                 if node.left_child is not None:
-                    Balltree._k_nearest_neighbors_recursive(target, queue, node.left_child)
+                    Balltree._k_nearest_neighbors_search_recursive(target, search_heap, min_distance, node.left_child)
                 if node.right_child is not None:
-                    Balltree._k_nearest_neighbors_recursive(target, queue, node.right_child)
+                    Balltree._k_nearest_neighbors_search_recursive(target, search_heap, min_distance, node.right_child)
 
-        return queue
+        return search_heap

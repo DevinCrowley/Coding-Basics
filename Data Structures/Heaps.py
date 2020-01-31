@@ -487,7 +487,7 @@ class N_ary_heap:
         Gracefully removes and returns the root. If the heap is empty, returns None.
 
         Args:
-            get_satellite (object, optional): If True, rather than just the root key, a tuple is returned 
+            get_satellite (bool, optional): If True, rather than just the root key, a tuple is returned 
                 whose second value is the satellite corresponding to the root key, or None if satellites are not stored. Defaults to False.
         
         Returns:
@@ -521,7 +521,7 @@ class N_ary_heap:
         Args:
             new_key (dtype): The key to be inserted.
             new_satellite (object): The corresponding satellite to be inserted. Defaults to None.
-            get_satellite (object, optional): If True, rather than just the root key, a tuple is returned 
+            get_satellite (bool, optional): If True, rather than just the root key, a tuple is returned 
                 whose second value is the satellite corresponding to the root key, or None if satellites are not stored. Defaults to False.
         
         Returns:
@@ -552,7 +552,7 @@ class N_ary_heap:
         If the heap is empty, return None.
 
         Args:
-            get_satellite (object, optional): If True, rather than just the root key, a tuple is returned 
+            get_satellite (bool, optional): If True, rather than just the root key, a tuple is returned 
                 whose second value is the satellite corresponding to the root key, or None if satellites are not stored. Defaults to False.
 
         Returns:
@@ -583,7 +583,7 @@ class N_ary_heap:
             num_peek (int): The number of values to peek, minimum 1. Defaults to 1.
             unpack_single (bool): If True and num_peek == 1, then return the single value rather than a list. Defaults to True.
             tail_first (bool): If True, returns values in tail-first order, else in sorted order. Defaults to True.
-            get_satellite (object, optional): If True, rather than just the tail key(s), a tuple is returned 
+            get_satellite (bool, optional): If True, rather than just the tail key(s), a tuple is returned 
                 whose second value is the satellite(s) corresponding to the tail key(s), or None if satellites are not stored. Defaults to False.
         
         Returns:
@@ -644,7 +644,7 @@ class N_ary_heap:
             poll_off (int): The number of values to poll, minimum 1. Defaults to 1.
             unpack_single (bool): If True and num_peek == 1, then return the single value rather than a list. Defaults to True.
             tail_first (bool): If True, returns values in tail-first order, else in sorted order. Defaults to True.
-            get_satellite (object, optional): If True, rather than just the tail key(s), a tuple is returned 
+            get_satellite (bool, optional): If True, rather than just the tail key(s), a tuple is returned 
                 whose second value is the satellite(s) corresponding to the tail key(s), or None if satellites are not stored. Defaults to False.
         
         Returns:
@@ -718,13 +718,15 @@ class N_ary_heap:
                                  f"overflow_off: {overflow_off}.")
     
     
-    def heapsort(self, min_or_max_first=None):
+    def heapsort(self, min_or_max_first=None, get_satellites=False):
         """
         Performs heapsort in place and returns a copy of the sorted array, possibly reversed based on min_or_max_first.
         
         Args:
             min_or_max_first (bool, NoneType, optional): Determines whether the returned array is ascending or descending. 
             If None, the heap_type is assumed. Does not affect the resultant state of the underlying heap. Defaults to None.
+            get_satellites (bool, optional): If True, rather than just the sorted keys, a 2D array is returned 
+                whose values along the 2nd dimension are a key and its corresponding satellite. Defaults to False.
         """
 
         # Validate min_or_max_first.
@@ -747,12 +749,18 @@ class N_ary_heap:
         
         if min_or_max_first != self._heap_type:
             output = np.copy(self._key_array[:self._size])
+            if get_satellites:
+                satellites = np.copy(self._satellite_array[:self._size])
+                output = np.concatenate((np.expand_dims(output, 1), np.expand_dims(satellites, 1)), axis=1)
         
         # Restore heap property.
         self._key_array[:self._size] = np.flip(self._key_array[:self._size])
 
         if min_or_max_first == self._heap_type:
             output = np.copy(self._key_array[:self._size])
+            if get_satellites:
+                satellites = np.copy(self._satellite_array[:self._size])
+                output = np.concatenate((np.expand_dims(output, 1), np.expand_dims(satellites, 1)), axis=1)
         
         return output
 
@@ -935,7 +943,7 @@ class Infinite_N_ary_heap(N_ary_heap):
         Gracefully removes and returns the root. If the heap is empty, returns None.
 
         Args:
-            get_satellite (object, optional): If True, rather than just the root key, a tuple is returned 
+            get_satellite (bool, optional): If True, rather than just the root key, a tuple is returned 
                 whose second value is the satellite corresponding to the root key, or None if satellites are not stored. Defaults to False.
         
         Returns:
@@ -961,7 +969,7 @@ class Infinite_N_ary_heap(N_ary_heap):
             poll_off (int): The number of values to poll, minimum 1. Defaults to 1.
             unpack_single (bool): If True and num_peek == 1, then return the single value rather than a list. Defaults to True.
             tail_first (bool): If True, returns values in tail-first order, else in sorted order. Defaults to True.
-            get_satellite (object, optional): If True, rather than just the tail key, a tuple is returned 
+            get_satellite (bool, optional): If True, rather than just the tail key, a tuple is returned 
                 whose second value is the satellite corresponding to the tail key, or None if satellites are not stored. Defaults to False.
         
         Returns:
@@ -978,13 +986,15 @@ class Infinite_N_ary_heap(N_ary_heap):
 
     def is_full(self):
         """
-        Returns True if there are as many stored elements as spaces in the underlying array, else False.
+        Returns True if the heap is at capacity and cannot store any additional elements, else returns False. 
+        This heap however is of type Infinite_N_ary_heap, and therefore has no maximum capacity. 
+        Therefore this method always returns False.
         
         Returns:
-            bool: True if full, False if not full.
+            bool: Returns False always because this heap, an Infinite_N_ary_heap, has no maximum capacity.
         """
         
-        raise NotImplementedError(f"is_full is not implemented in Infinite_N_ary_heap.")
+        return False
 
 
     def change_capacity(self, new_capacity):
