@@ -71,6 +71,7 @@ class Balltree:
         pivot_dimension = Balltree._find_widest_dimension_approx(array, spread_of=spread_of)
         pivot_value = Balltree._find_median_approx(array, pivot_dimension, median_of=median_of)
         pivot_column = array[:, pivot_dimension]
+        # TODO: Possible improvement: use the same sample points to find the median as to find the widest dimension.
 
         # Make this_node.
 
@@ -175,6 +176,8 @@ class Balltree:
             ValueError: raised if target does not have the same length as the coordinates stored in self.root.
             TypeError: Raised if k is not of type int.
             ValueError: Raised if k is not positive.
+            TypeError: Raised if min_distance is neither None nor of type float or int.
+            ValueError: Raised of min_distance is negative.
         
         Returns:
             N_ary_heap, Infinite_N_ary_heap: The heap used as a max-first priority queue (search_heap) holding the (up to) k nearest neighbors to target in self.
@@ -199,7 +202,7 @@ class Balltree:
                 raise ValueError(f"If provided, k must be positive.\n"
                                 f"k: {k}.")
         if min_distance is not None:
-            if not isinstance(min_distance, [float, int]):
+            if not isinstance(min_distance, (float, int)):
                 raise TypeError(f"min_distance must be of type int or float.\n"
                                 f"type(min_distance): {type(min_distance)}.")
             if min_distance < 0:

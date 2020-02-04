@@ -303,31 +303,6 @@ class N_ary_heap:
             self._exchange_values(this_index, parent_index)
             this_index = parent_index
 
-
-    # TODO: remove.
-    def _sift_up_recursive(self, this_index):
-        """Recursively exchange the value at this_index with its predecessors in the tree until it satisfies the appropriate heap property."""
-        
-        this_key = self._key_array[this_index]
-        parent_index = self._get_parent(this_index)
-        parent_key = self._key_array[parent_index]
-
-        exchange_and_recurse = False
-        if self._heap_type == 'min':
-            if parent_key > this_key:
-                exchange_and_recurse = True
-        elif self._heap_type == 'max':
-            if parent_key < this_key:
-                exchange_and_recurse = True
-        else:
-            raise ValueError(f"self._heap_type must be either 'min' or 'max'.\n"
-                             f"self._heap_type: {self._heap_type}.")
-        
-        if exchange_and_recurse:
-            # Exchange this_key with parent_key.
-            self._exchange_values(this_index, parent_index)
-            self.sift_up(parent_index)
-    
     
     def _sift_down(self, this_index):
         """Exchange the value at this_index with its descendents in the tree until it satisfies the appropriate heap property."""
@@ -359,36 +334,6 @@ class N_ary_heap:
             self._exchange_values(this_index, extremum_child_index)
             this_index = extremum_child_index
 
-
-    # TODO: remove.
-    def _sift_down_recursive(self, this_index):
-        """Recursively exchange the value at this_index with its descendents in the tree until it satisfies the appropriate heap property."""
-
-        this_key = self._key_array[this_index]
-        extremum_child_index = self._get_extremum_child(this_index)
-
-        # Check for completion.
-
-        if extremum_child_index is None:
-            # The node at this_index is a leaf node.
-            return
-        extremum_child_key = self._key_array[extremum_child_index]
-        # Check whether this_key is at least as extreme as extreme_child_key.
-        if self._heap_type == 'min':
-            if this_key <= extremum_child_key:
-                return
-        elif self._heap_type == 'max':
-            if this_key >= extremum_child_key:
-                return
-        else:
-            raise ValueError(f"self._heap_type must be either 'min' or 'max'.\n"
-                             f"self._heap_type: {self._heap_type}.")
-        # The appropriate heap property is not satisfied.
-
-        # Exchange and recurse.
-        self._exchange_values(this_index, extremum_child_index)
-        self.sift_down_recursive(extremum_child_index)
-    
 
     def _force_overflow(self, num_overflow):
         """Force the overflow of up to num_overflow nodes."""
