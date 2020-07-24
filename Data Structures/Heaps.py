@@ -172,7 +172,7 @@ class N_ary_heap:
             for element_index, element in enumerate(level):
                 level[element_index] = ' ' * (node_size - len(str(element))) + element
 
-            # Calculatte left_pad_size.
+            # Calculate left_pad_size.
             # Pad by the next lower level's left pad plus half its brood size plus half of node_size.
             left_pad_size = 0 if reverse_level_index == 0 else int(
                 left_pad_size + 
